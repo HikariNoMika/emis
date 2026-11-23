@@ -92,6 +92,15 @@ def main():
     if source_url == target_url:
         raise SystemExit("Source and target are the same database.")
 
+    if source_url.startswith("sqlite"):
+        source_path = Path(source_url.split(":///", 1)[1])
+        if not source_path.is_file():
+            raise SystemExit(
+                f"Source SQLite file not found: {source_path}\n"
+                "Copy emis_dev.db into backend/ on the server before running "
+                "the migration (and remove any empty directory with that name)."
+            )
+
     source = create_engine(source_url)
     target = create_engine(target_url)
     # The compatibility layer exposes SQLAlchemy metadata through Base.
