@@ -20,7 +20,7 @@ import os
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
@@ -94,7 +94,8 @@ def main():
 
     source = create_engine(source_url)
     target = create_engine(target_url)
-    metadata = db.metadata
+    # The compatibility layer exposes SQLAlchemy metadata through Base.
+    metadata = db.Model.metadata
 
     if inspect(source).get_table_names() == []:
         raise SystemExit(f"No tables found in source database: {source_url}")
@@ -134,7 +135,7 @@ def main():
         problems = []
         for name, expected in counts.items():
             actual = dst.execute(
-                f'SELECT COUNT(*) FROM "{name}"'
+                text(f'SELECT COUNT(*) FROM "{name}"')
             ).scalar_one()
             if actual != expected:
                 problems.append(f"{name}: source={expected} target={actual}")
