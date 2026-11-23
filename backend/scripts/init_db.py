@@ -14,6 +14,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE_DIR))
 
+from app import models  # noqa: E402,F401 - register tables in Base.metadata
 from app.config import get_settings  # noqa: E402
 from app.extensions import db  # noqa: E402
 
