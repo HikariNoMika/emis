@@ -84,6 +84,17 @@ services:
     depends_on:
       - backend
 
+  # Fresh install: create an empty schema + seed data, no imported readings.
+  # Run with: docker compose -f docker-compose.server.yml --profile init-db run --rm init-db
+  init-db:
+    build: ./backend
+    profiles: ["init-db"]
+    command: python scripts/init_db.py
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the root .env}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # One-off data copy. Not started by `up`; run it explicitly (see README).
   # Copy emis_dev.db into backend/ on the server first.
   migrate:

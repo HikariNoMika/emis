@@ -421,6 +421,23 @@ newly created tables and seed data:
 docker compose -f docker-compose.server.yml restart backend celery
 ```
 
+If you do **not** want to upload the SQLite file, use a fresh install instead —
+this creates the schema, measurement catalogue and admin account with no
+imported readings (upload your Excel/CSV files later through the UI):
+```bash
+docker compose -f docker-compose.server.yml --profile init-db run --rm --build init-db
+docker compose -f docker-compose.server.yml restart backend celery
+```
+
+If the migration reports `Source SQLite file not found`, check the mounted path:
+```bash
+ls -lh backend/emis_dev.db
+docker compose -f docker-compose.server.yml --profile migrate config | grep emis_dev
+```
+The first command must show a ~483 MB **file**, not a directory. If it is a
+directory, remove it (`rm -rf backend/emis_dev.db`) and copy the file again.
+The `config` command shows where Compose expects the file to be.
+
 If your PostgreSQL is published on port 5432 of the server, the default
 `host.docker.internal:5432` in `.env.example` works as-is — the compose file
 maps `host-gateway` for exactly this case. If your PostgreSQL container instead
