@@ -1,0 +1,88 @@
+# Server deployment: uses an EXTERNAL PostgreSQL instance (your existing one).
+# No bundled database and no host Redis port, so nothing collides with the
+# services already running on your server.
+#
+# Copy .env.example to .env and fill it in, then:
+#   docker compose -f docker-compose.server.yml up -d --build
+
+services:
+  # Internal-only broker/cache — not published to the host.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      APP_ENV: production
+      # Required values come from the root .env (see .env.example).
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the root .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in the root .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the root .env}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      RATELIMIT_STORAGE_URI: redis://redis:6379/1
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+    # Lets the container reach PostgreSQL listening on the server's localhost.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - upload_data:/app/uploads
+    # Not published: Nginx proxies /api to this service internally.
+    # Uncomment only if you need direct API access from the host.
+    # ports:
+    #   - "${BACKEND_PORT:-8000}:5000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/v1/system/health').read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  celery:
+    build: ./backend
+    restart: unless-stopped
+    command: celery -A app.celery_app:celery worker --loglevel=info
+    env_file:
+      - path: backend/.env
+        required: false
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in the root .env}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in the root .env}
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the root .env}
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - upload_data:/app/uploads
+    depends_on:
+      - backend
+      - redis
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    # 5173 is only a host-side port — change FRONTEND_PORT in .env to any free
+    # port (e.g. 8080). The container always serves on 80 internally.
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  upload_data:

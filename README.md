@@ -364,3 +364,50 @@ machine.
    thousands of near-identical flags. Station health is refreshed after every
    import, and the dashboard includes an "Unknown" bucket so the status cards
    always add up to the active station total.
+
+## Deploying to a server that already has PostgreSQL
+
+You do **not** need to reset or recover the password of your existing database
+user. Create a separate role for EMIS instead, so other sites keep working.
+
+**1. On the server, create a dedicated role and database:**
+```bash
+sudo -u postgres psql
+```
+```sql
+CREATE ROLE emis_app LOGIN PASSWORD 'choose-a-new-password';
+CREATE DATABASE emis OWNER emis_app;
+\c emis
+GRANT ALL ON SCHEMA public TO emis_app;
+\q
+```
+(If `sudo -u postgres psql` is unavailable, run the SQL with any account that
+has `CREATEDB`/`CREATEROLE` privileges.)
+
+**2. Copy the project to the server, then configure it:**
+```bash
+cp .env.example .env
+```
+Edit `.env`:
+- `DATABASE_URL` — use `host.docker.internal` if PostgreSQL runs on the same
+  server as Docker; otherwise use its remote host/IP. Use the `emis_app` role
+  and the password you just chose.
+- `SECRET_KEY` / `JWT_SECRET_KEY` — generate fresh values:
+  `python -c "import secrets; print(secrets.token_hex(32))"`
+- `CORS_ORIGINS` — the URL users will actually open.
+- `FRONTEND_PORT` — any free host port (default `8080`). Port `5173` is only a
+  host-side mapping and can simply be changed; nothing inside the container
+  depends on it.
+
+**3. Start the stack:**
+```bash
+docker compose -f docker-compose.server.yml up -d --build
+```
+This compose file deliberately does **not** start its own PostgreSQL or publish
+Redis, so it cannot collide with the services already on your server. Open
+`http://YOUR_SERVER:8080`.
+
+**4. Load the local data (optional):**
+Run `python scripts/migrate_to_postgresql.py` from `backend/` on the machine
+that has `emis_dev.db`, with `DATABASE_URL` pointing at the new server database.
+The frontend is then available at the port you chose.
