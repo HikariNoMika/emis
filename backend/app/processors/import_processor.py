@@ -11,6 +11,7 @@ CRITICAL DATA SAFETY RULES IMPLEMENTED HERE:
 
 from app.extensions import db
 from app.integrations.normalizer import normalize_number
+from app.services.exceptions import ConflictError, ValidationAppError
 from app.integrations.timestamp_parser import parse_timestamp
 from app.models import (
     DataQualityFlag,
@@ -201,17 +202,20 @@ def build_preview(batch, limit=50):
 def execute_import(batch, user_id):
     """Insert validated measurements and quality flags, then summarize."""
     if batch.status == "COMPLETED":
-        raise ValueError("This import batch has already been processed.")
+        raise ConflictError("This import batch has already been processed.")
 
     mapping = batch.column_mapping or {}
     station_id = mapping.get("station_id")
     station = db.session.get(Station, station_id) if station_id else None
     if station is None:
-        raise ValueError("No station is selected for this import batch.")
+        raise ValidationAppError(
+            "No station is selected. Open the import, set the station in the "
+            "mapping step, save it, then process."
+        )
     if not mapping.get("timestamp_column"):
-        raise ValueError("No timestamp column is mapped for this import batch.")
+        raise ValidationAppError("No timestamp column is mapped for this import batch.")
     if not mapping.get("measurement_columns"):
-        raise ValueError("No measurement columns are mapped for this import batch.")
+        raise ValidationAppError("No measurement columns are mapped for this import batch.")
 
     batch.status = "PROCESSING"
     batch.started_at = utcnow()
