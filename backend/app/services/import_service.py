@@ -16,7 +16,7 @@ from .exceptions import ConflictError, ValidationAppError
 
 # Files larger than this are processed by a Celery worker instead of in the
 # web request. The value is intentionally conservative.
-BACKGROUND_THRESHOLD_BYTES = 2 * 1024 * 1024  # 2 MB
+BACKGROUND_THRESHOLD_BYTES = 100 * 1024  # 100 KB — keep imports out of the web request
 
 
 def _checksum(path):

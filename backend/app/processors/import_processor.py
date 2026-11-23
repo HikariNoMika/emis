@@ -199,6 +199,40 @@ def build_preview(batch, limit=50):
     }
 
 
+def _create_pending_flags(pending_flags, batch_id, station_id):
+    """Create quality flags whose measurements have just been flushed."""
+    for (
+        measurement,
+        sensor_id,
+        type_id,
+        observation_time,
+        number,
+        status,
+        severity,
+        explanation,
+        expected_range,
+        unit,
+    ) in pending_flags:
+        db.session.add(
+            DataQualityFlag(
+                station_id=station_id,
+                sensor_id=sensor_id,
+                measurement_type_id=type_id,
+                measurement_id=measurement.id,
+                import_batch_id=batch_id,
+                observation_time=observation_time,
+                original_value=number,
+                unit=unit,
+                rule_code=f"IMPORT_{status}",
+                quality_status=status,
+                severity=severity,
+                expected_range=expected_range,
+                actual_condition=str(number),
+                explanation=explanation,
+            )
+        )
+
+
 def execute_import(batch, user_id):
     """Insert validated measurements and quality flags, then summarize."""
     if batch.status == "COMPLETED":
@@ -222,6 +256,10 @@ def execute_import(batch, user_id):
     db.session.commit()
 
     imported = duplicates = errors = warnings = 0
+    # Flush in batches instead of once per reading. A flush is a database
+    # round-trip; doing one per row made large workbooks extremely slow.
+    FLUSH_EVERY = 1000
+    pending_flags = []
     existing_keys = _existing_keys(station_id)
     types = _type_lookup()
     timezone_name = mapping.get("timezone") or station.timezone or "Asia/Manila"
@@ -288,39 +326,46 @@ def execute_import(batch, user_id):
                 source_record_identifier=str(payload.get("record_id") or record.row_number),
             )
             db.session.add(measurement)
-            db.session.flush()
             existing_keys.add(key)
             imported += 1
 
             if status in {"SUSPECT", "INVALID", "MISSING"}:
                 warnings += 1
-                db.session.add(
-                    DataQualityFlag(
-                        station_id=station_id,
-                        sensor_id=measurement_sensor_id,
-                        measurement_type_id=measurement_type.id,
-                        measurement_id=measurement.id,
-                        import_batch_id=batch.id,
-                        observation_time=observation_time,
-                        original_value=number,
-                        unit=measurement_type.unit,
-                        rule_code=f"IMPORT_{status}",
-                        quality_status=status,
-                        severity=severity,
-                        expected_range=(
+                # Defer the flag: measurement.id is only available after a
+                # flush, so build flags once a batch of measurements is flushed.
+                pending_flags.append(
+                    (
+                        measurement,
+                        measurement_sensor_id,
+                        measurement_type.id,
+                        observation_time,
+                        number,
+                        status,
+                        severity,
+                        explanation,
+                        (
                             f"{measurement_type.expected_min} - {measurement_type.expected_max}"
                             if measurement_type.expected_min is not None
                             else None
                         ),
-                        actual_condition=str(number),
-                        explanation=explanation,
+                        measurement_type.unit,
                     )
                 )
+
+            if imported % FLUSH_EVERY == 0:
+                db.session.flush()
+                _create_pending_flags(pending_flags, batch.id, station_id)
+                pending_flags = []
 
         record.is_processed = True
         record.processing_note = (
             "; ".join(row_notes) if row_notes else "Processed successfully."
         )
+
+    # Flush any remaining measurements and their flags.
+    db.session.flush()
+    _create_pending_flags(pending_flags, batch.id, station_id)
+    pending_flags = []
 
     batch.imported_rows = imported
     batch.duplicate_rows = duplicates
