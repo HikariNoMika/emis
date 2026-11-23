@@ -45,3 +45,9 @@ def _init_database(**_kwargs):
 @celery.task(name="emis.ping")
 def ping():
     return "pong"
+
+
+# Import task modules so the worker registers their names at startup.
+# Without this, queued tasks are received but discarded with
+# "KeyError: 'emis.process_import'".
+from app.tasks import import_tasks  # noqa: E402,F401
