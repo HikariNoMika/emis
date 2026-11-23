@@ -28,10 +28,19 @@ db.init(get_settings())
 db.create_all()
 
 from app.services.accomplishment_service import seed_defaults  # noqa: E402
-from seed import ensure_core_data  # noqa: E402
+from seed import (  # noqa: E402
+    ensure_core_data,
+    seed_admin,
+    seed_reference_station,
+    seed_settings,
+)
 
 ensure_core_data()
+admin = seed_admin()
+seed_reference_station()
+seed_settings(admin)
 seed_defaults()
+db.session.commit()
 db.session.remove()
 
 print("Database initialized: schema created, catalogue and admin account seeded.")
