@@ -324,8 +324,15 @@ def process_batch(batch, user_id):
 
         batch.status = "QUEUED"
         db.session.commit()
-        task = process_import_task.delay(batch.id, user_id)
-        return {"queued": True, "task_id": task.id, "batch": import_batch_to_dict(batch)}
+        try:
+            task = process_import_task.delay(batch.id, user_id)
+            return {"queued": True, "task_id": task.id, "batch": import_batch_to_dict(batch)}
+        except Exception:
+            # Broker unavailable (e.g. Redis misconfigured). Fall back to
+            # processing inline so the import still completes instead of 500.
+            db.session.rollback()
+            batch.status = "PREVIEWED"
+            db.session.commit()
 
     summary = execute_import(batch, user_id)
     log_action(

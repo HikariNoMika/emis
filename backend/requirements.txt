@@ -20,6 +20,8 @@ numpy==1.26.4
 
 # Background jobs and caching
 celery==5.3.6
+# kombu 5.5+ requires redis-py >= 6.1.0; pin a version compatible with redis 5.x.
+kombu==5.3.5
 redis==5.0.1
 
 # Reporting
