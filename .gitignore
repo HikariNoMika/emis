@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# Git ignore file for the EMIS project
+# ---------------------------------------------------------------------------
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment / secrets  (NEVER commit real credentials)
+.env
+backend/.env
+frontend/.env
+*.pem
+*.key
+# NOTE: .env.example files are intentionally NOT ignored.
+
+# Local development database (DO NOT commit)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backend/emis_dev.db
+
+# Uploaded monitoring files and generated reports
+backend/uploads/
+backend/static/reports/
+backend/instance/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Docker / OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
