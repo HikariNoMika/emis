@@ -326,6 +326,14 @@ def execute_import(batch, user_id):
     batch.completed_at = utcnow()
     db.session.commit()
 
+    # Keep station health in sync with the freshly imported readings. A failure
+    # here must not fail or roll back an otherwise successful import.
+    try:
+        from app.services.health_service import refresh_all
+        refresh_all()
+    except Exception:  # pragma: no cover - defensive
+        db.session.rollback()
+
     return {
         "batch_id": batch.id,
         "status": batch.status,

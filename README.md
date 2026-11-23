@@ -347,3 +347,20 @@ machine.
    `alembic revision --autogenerate -m "Initial schema"` then `alembic upgrade head`.
    PostgreSQL is recommended on the server for multi-user access, backups and
    TimescaleDB time-series features. SQLite is fine for a single-user local setup.
+
+   To move the existing local data to PostgreSQL, create an empty database and
+   run the copy script from `backend/` (it reads the destination from
+   `DATABASE_URL`, never modifies the source, and verifies row counts):
+   ```
+   python scripts/migrate_to_postgresql.py
+   ```
+   The script creates the schema from the SQLAlchemy models, copies every table
+   in foreign-key-safe order in batches, resets primary-key sequences, and
+   fails safely if the target already contains EMIS tables.
+
+9. **Dashboard counters:** "Quality warnings" counts *distinct open issues*
+   (station × parameter × rule) with WARNING/CRITICAL severity, not every
+   flagged reading — a single mis-mapped column can otherwise generate tens of
+   thousands of near-identical flags. Station health is refreshed after every
+   import, and the dashboard includes an "Unknown" bucket so the status cards
+   always add up to the active station total.

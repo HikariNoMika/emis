@@ -31,17 +31,33 @@ def summary():
             is_archived=False, operational_status=status
         ).count()
 
+    # A single mis-mapped column can generate thousands of individual flags.
+    # Count distinct open issues (station + parameter + rule) that actually
+    # need attention, instead of every flagged reading.
+    actionable_warnings = (
+        db.session.query(
+            DataQualityFlag.station_id,
+            DataQualityFlag.measurement_type_id,
+            DataQualityFlag.rule_code,
+        )
+        .filter(
+            DataQualityFlag.resolution_status == "OPEN",
+            DataQualityFlag.severity.in_(["WARNING", "CRITICAL"]),
+        )
+        .distinct()
+        .count()
+    )
+
     return {
         "total_stations": Station.query.filter_by(is_archived=False).count(),
         "online_stations": count_active_stations("ONLINE"),
         "delayed_stations": count_active_stations("DELAYED"),
         "offline_stations": count_active_stations("OFFLINE"),
         "maintenance_stations": count_active_stations("MAINTENANCE"),
+        "unknown_stations": count_active_stations("UNKNOWN"),
         "total_sensors": Sensor.query.filter_by(is_archived=False).count(),
         "active_alerts": Alert.query.filter_by(status="ACTIVE").count(),
-        "data_quality_warnings": DataQualityFlag.query.filter_by(
-            resolution_status="OPEN"
-        ).count(),
+        "data_quality_warnings": actionable_warnings,
         "latest_import_at": to_iso(
             latest_batch.file_imported_at if latest_batch else None
         ),

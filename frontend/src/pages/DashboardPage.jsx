@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Clock3,
   Database,
+  HelpCircle,
   MapPin,
   Radio,
   ShieldCheck,
@@ -123,6 +124,12 @@ export default function DashboardPage() {
             <SummaryCard label="Delayed" value={data?.delayed_stations} tone="amber" icon={Clock3} />
             <SummaryCard label="Offline" value={data?.offline_stations} tone="red" icon={Radio} />
             <SummaryCard
+              label="Unknown"
+              value={data?.unknown_stations}
+              tone="slate"
+              icon={HelpCircle}
+            />
+            <SummaryCard
               label="Under maintenance"
               value={data?.maintenance_stations}
               tone="blue"
@@ -135,6 +142,7 @@ export default function DashboardPage() {
               value={data?.data_quality_warnings}
               tone="amber"
               icon={ShieldCheck}
+              hint="Distinct open issues (station × parameter × rule)"
             />
             <SummaryCard
               label="Latest import"
