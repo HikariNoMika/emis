@@ -408,6 +408,20 @@ Redis, so it cannot collide with the services already on your server. Open
 `http://YOUR_SERVER:8080`.
 
 **4. Load the local data (optional):**
-Run `python scripts/migrate_to_postgresql.py` from `backend/` on the machine
-that has `emis_dev.db`, with `DATABASE_URL` pointing at the new server database.
-The frontend is then available at the port you chose.
+Copy `backend/emis_dev.db` from your development machine into `backend/` on the
+server, then run the one-off migration container (it reads `DATABASE_URL` from
+the root `.env`; the source file is mounted read-only):
+```bash
+docker compose -f docker-compose.server.yml --profile migrate run --rm migrate
+```
+It copies every table in batches and verifies row counts. The source SQLite
+file is never modified. Restart the stack afterwards so the backend sees the
+newly created tables and seed data:
+```bash
+docker compose -f docker-compose.server.yml restart backend celery
+```
+
+If your PostgreSQL is published on port 5432 of the server, the default
+`host.docker.internal:5432` in `.env.example` works as-is — the compose file
+maps `host-gateway` for exactly this case. If your PostgreSQL container instead
+publishes a different host port, change the port in `DATABASE_URL`.

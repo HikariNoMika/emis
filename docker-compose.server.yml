@@ -84,5 +84,19 @@ services:
     depends_on:
       - backend
 
+  # One-off data copy. Not started by `up`; run it explicitly (see README).
+  # Copy emis_dev.db into backend/ on the server first.
+  migrate:
+    build: ./backend
+    profiles: ["migrate"]
+    command: python scripts/migrate_to_postgresql.py
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in the root .env}
+      SOURCE_DATABASE_URL: ${SOURCE_DATABASE_URL:-sqlite:////app/emis_dev.db}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/emis_dev.db:/app/emis_dev.db:ro
+
 volumes:
   upload_data:
