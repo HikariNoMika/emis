@@ -27,6 +27,77 @@ def _checksum(path):
     return digest.hexdigest()
 
 
+def _as_float(value):
+    """Best-effort numeric conversion for metadata coordinates/intervals."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def station_from_metadata(metadata, uploaded_by_id=None):
+    """Create a station (and its sensors) from a workbook's Metadata sheet.
+
+    Called when the file's station code does not match any existing station.
+    Reuses an existing station with the same code (including archived ones) so
+    re-uploading a file never creates duplicates. Only metadata actually present
+    in the workbook is used — no values are invented.
+    """
+    meta = (metadata or {}).get("station") or {}
+    code = str(meta.get("code") or "").strip()
+    if not code:
+        return None
+
+    existing = Station.query.filter_by(station_code=code).first()
+    if existing:
+        return existing
+
+    interval = _as_float(meta.get("interval_seconds"))
+    station = Station(
+        station_code=code[:50],
+        name=str(meta.get("name") or meta.get("site") or code).strip()[:150],
+        site_name=(str(meta.get("site")).strip()[:150] or None) if meta.get("site") else None,
+        latitude=_as_float(meta.get("latitude")),
+        longitude=_as_float(meta.get("longitude")),
+        elevation=_as_float(meta.get("altitude")),
+        timezone=str(meta.get("timezone") or "Asia/Manila")[:64],
+        measurement_interval_seconds=int(interval) if interval and interval > 0 else 900,
+        device_serial_number=(
+            str(meta.get("device_serial")).strip()[:100] or None
+        ) if meta.get("device_serial") else None,
+        operational_status="UNKNOWN",
+    )
+    db.session.add(station)
+    db.session.flush()
+
+    for item in (metadata or {}).get("sensors") or []:
+        port = item.get("port")
+        if port is None:
+            continue
+        sensor = Sensor(
+            station_id=station.id,
+            port_number=str(port)[:20],
+            name=str(item.get("Name") or item.get("name") or f"Port {port}")[:150],
+            serial_number=(
+                str(item.get("Serial Number")).strip()[:100] or None
+            ) if item.get("Serial Number") else None,
+        )
+        db.session.add(sensor)
+
+    db.session.flush()
+    log_action(
+        "STATION_AUTO_CREATED",
+        "stations",
+        record_identifier=station.station_code,
+        new_values={"source": "workbook metadata", "station_code": station.station_code},
+        user_id=uploaded_by_id,
+        commit=False,
+    )
+    return station
+
+
 def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None):
     """Steps 1-4: save, inspect, detect metadata and preserve raw rows."""
     original_filename = file_storage.filename or ""
@@ -81,6 +152,19 @@ def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None):
                 mapping["timezone"] = selected.timezone
         elif detected_station:
             batch.station_id = detected_station.id
+        else:
+            # No existing station matched. Create it from the workbook's own
+            # Metadata sheet so the administrator does not have to type it in.
+            auto_station = station_from_metadata(
+                snapshot.get("metadata", {}), uploaded_by_id
+            )
+            if auto_station:
+                mapping["station_id"] = auto_station.id
+                batch.station_id = auto_station.id
+                warnings.append(
+                    f"Station {auto_station.station_code} was created automatically "
+                    "from the workbook metadata."
+                )
 
         # Reuse the station's existing sensors by port number. This is essential
         # for duplicate detection: the same file must resolve to the same
