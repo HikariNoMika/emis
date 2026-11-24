@@ -10,6 +10,16 @@ export function useReports(params) {
   })
 }
 
+export function useReportProgress(jobId, enabled = false) {
+  return useQuery({
+    queryKey: ['reports', 'progress', jobId],
+    queryFn: () => reportService.progress(jobId),
+    enabled: Boolean(jobId) && enabled,
+    refetchInterval: enabled ? 1000 : false,
+    retry: false,
+  })
+}
+
 export function useMaintenance(params) {
   return useQuery({
     queryKey: ['maintenance', params],

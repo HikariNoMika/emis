@@ -26,8 +26,20 @@ def list_reports(
 
 @reports_bp.post("/generate", status_code=201)
 def generate_report(payload: ReportGenerateSchema, user=Depends(get_current_user)):
-    report = report_service.generate(payload.model_dump(), user.id)
+    data = payload.model_dump()
+    report = report_service.generate(data, user.id, job_id=data.get("job_id"))
     return ok(data=report_to_dict(report), message="Report generated.")
+
+
+@reports_bp.get("/progress/{job_id}")
+def report_progress(job_id: str, user=Depends(get_current_user)):
+    """Live progress for a running report generation."""
+    from app.utils import report_progress as progress
+    status = progress.get(job_id)
+    if status is None:
+        from app.services.exceptions import NotFoundError
+        raise NotFoundError("Report job not found.")
+    return ok(data=status)
 
 
 @reports_bp.get("/{report_id}")

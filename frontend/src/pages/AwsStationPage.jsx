@@ -5,6 +5,7 @@ import { AlertTriangle } from 'lucide-react'
 import TrendChart from '../components/charts/TrendChart'
 import StationForm from '../components/forms/StationForm'
 import DataTable from '../components/ui/DataTable'
+import ReportProgressBar from '../components/ui/ReportProgressBar'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
@@ -14,6 +15,7 @@ import SearchableSelect from '../components/ui/SearchableSelect'
 import StatusBadge from '../components/ui/StatusBadge'
 import SummaryCard from '../components/ui/SummaryCard'
 import { useStationImports } from '../hooks/useImports'
+import { useReportProgress } from '../hooks/useAdministration'
 import {
   useDataGaps,
   useLatestMeasurements,
@@ -75,6 +77,9 @@ export default function AwsStationPage({
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadNotice, setUploadNotice] = useState('')
   const [reportNotice, setReportNotice] = useState('')
+  const [reportJobId, setReportJobId] = useState('')
+  const [reportRunning, setReportRunning] = useState(false)
+  const reportProgress = useReportProgress(reportJobId, Boolean(reportJobId) && reportRunning)
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const queryClient = useQueryClient()
@@ -142,20 +147,28 @@ export default function AwsStationPage({
   })
 
   const reportMutation = useMutation({
-    mutationFn: () => reportService.generate({
-      report_type: 'station_full',
-      station_id: Number(stationId),
-      date_from: dateFrom,
-      ...(dateTo ? { date_to: dateTo } : {}),
-      measurement_type_ids: types.map((t) => t.id),
-      file_format: 'pdf',
-      title: `${brand} — ${station?.name || 'Station'} report`,
-    }),
+    mutationFn: () => {
+      const jobId = `rpt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      setReportJobId(jobId)
+      setReportRunning(true)
+      setReportNotice('')
+      return reportService.generate({
+        report_type: 'station_full',
+        station_id: Number(stationId),
+        date_from: dateFrom,
+        ...(dateTo ? { date_to: dateTo } : {}),
+        measurement_type_ids: types.map((t) => t.id),
+        file_format: 'pdf',
+        title: `${brand} — ${station?.name || 'Station'} report`,
+        job_id: jobId,
+      })
+    },
     onSuccess: (report) => {
       setReportNotice(
         `Report ${report.report_number} generated. Download it from the Reports page.`,
       )
     },
+    onSettled: () => setReportRunning(false),
   })
 
   const types = (typesQuery.data || []).filter(
@@ -370,6 +383,11 @@ export default function AwsStationPage({
         <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
           {uploadNotice}
         </p>
+      )}
+      {reportRunning && (
+        <div className="mb-4">
+          <ReportProgressBar progress={reportProgress.data} />
+        </div>
       )}
       {reportNotice && (
         <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">

@@ -26,6 +26,7 @@ class ReportGenerateSchema(BaseModel):
     file_format: str = "pdf"
     reporting_year: Optional[int] = None
     quarter: Optional[int] = None
+    job_id: Optional[str] = None
 
     @field_validator("report_type")
     @classmethod

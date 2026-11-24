@@ -9,6 +9,10 @@ export const reportService = {
     return extractData(await api.post('/reports/generate', payload))
   },
 
+  async progress(jobId) {
+    return extractData(await api.get(`/reports/progress/${jobId}`))
+  },
+
   async get(id) {
     return extractData(await api.get(`/reports/${id}`))
   },

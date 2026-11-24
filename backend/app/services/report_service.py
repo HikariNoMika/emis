@@ -131,7 +131,7 @@ def _first_station_id(records):
     return records[0].station_id if records else None
 
 
-def _gather_station_report(payload, date_from, date_to):
+def _gather_station_report(payload, date_from, date_to, progress=None):
     """Collect everything a station report needs for the given date range.
 
     Includes all readings, per-parameter statistics, data gaps, quality flags
@@ -158,7 +158,9 @@ def _gather_station_report(payload, date_from, date_to):
     records = records_query.order_by(Measurement.observation_time.asc()).all()
 
     sections = []
-    for measurement_type in types:
+    for index, measurement_type in enumerate(types):
+        if progress:
+            progress(index, f"Analysing {measurement_type.name}…")
         params = {"station_id": station.id, "measurement_type_id": measurement_type.id}
         stats = ms.statistics_for(params, date_from, date_to)
         series = ms.trends(
@@ -594,7 +596,7 @@ def _build_xlsx(path, title, payload, date_from, date_to, data):
     workbook.save(path)
 
 
-def _gather_comparison_report(payload, date_from, date_to):
+def _gather_comparison_report(payload, date_from, date_to, progress=None):
     """Compare up to 3 stations for each measurement type over a date span.
 
     For every parameter we collect each station's trend series and statistics,
@@ -624,7 +626,9 @@ def _gather_comparison_report(payload, date_from, date_to):
         types = [t for t in MeasurementType.query.order_by(MeasurementType.id).all() if t.id in present]
 
     blocks = []
-    for mtype in types:
+    for index, mtype in enumerate(types):
+        if progress:
+            progress(index, f"Comparing {mtype.name} across stations…")
         series_by_station = []
         lows = []
         highs = []
@@ -908,12 +912,33 @@ def _generate_accomplishment_report(payload, user_id):
     return report
 
 
-def generate(payload, user_id):
-    """Generate, store and register a report. Returns the Report record."""
+def generate(payload, user_id, job_id=None):
+    """Generate, store and register a report. Returns the Report record.
+
+    ``job_id`` enables live progress reporting for long-running reports.
+    """
+    from app.utils import report_progress
+
+    if job_id:
+        report_progress.start(job_id, total_steps=1, message="Preparing report…")
+
+    try:
+        return _generate(payload, user_id, job_id, report_progress)
+    except Exception as exc:
+        if job_id:
+            report_progress.finish(job_id, error=str(exc))
+        raise
+
+
+def _generate(payload, user_id, job_id, report_progress):
+    """Inner implementation of report generation."""
     # Accomplishment reports are produced by their own module and registered in
     # the shared report history so the Reports page can list/download them.
     if str(payload.get("report_type", "")).startswith("accomplishment_"):
-        return _generate_accomplishment_report(payload, user_id)
+        report = _generate_accomplishment_report(payload, user_id)
+        if job_id:
+            report_progress.finish(job_id, message=f"Report {report.report_number} ready.")
+        return report
 
     date_from, date_to = _resolve_period(payload, None, None)
     # Re-resolve using parsed dates when the caller supplied them as strings.
@@ -932,12 +957,36 @@ def generate(payload, user_id):
 
     title = payload.get("title") or REPORT_TITLES[payload["report_type"]]
 
+    # Estimate the work so the progress bar can advance per parameter.
+    if job_id:
+        if "measurement_type_ids" in payload and payload["measurement_type_ids"]:
+            steps = len(payload["measurement_type_ids"])
+        elif payload.get("report_type") == "station_comparison":
+            steps = len(payload.get("station_ids") or []) or 1
+        else:
+            steps = MeasurementType.query.count() or 1
+        # +1 for the final file build.
+        report_progress.update(job_id, step=0, message="Counting parameters…")
+        # mutate total via a fresh start (keeps status RUNNING)
+        report_progress.start(job_id, total_steps=steps + 1, message="Preparing report…")
+
+    def step(index, message):
+        if job_id:
+            report_progress.update(job_id, step=index, message=message)
+
+    if job_id:
+        report_progress.update(job_id, step=0, message="Gathering measurements…")
+
     if payload["report_type"] == "station_full":
-        data = _gather_station_report(payload, date_from, date_to)
+        data = _gather_station_report(payload, date_from, date_to, step)
     elif payload["report_type"] == "station_comparison":
-        data = _gather_comparison_report(payload, date_from, date_to)
+        data = _gather_comparison_report(payload, date_from, date_to, step)
     else:
         data = _gather_data(payload, date_from, date_to)
+
+    if job_id:
+        report_progress.update(job_id, step=report_progress.get(job_id)["total_steps"] - 1,
+                               message="Building PDF / Excel…")
 
     report_folder = get_settings().REPORT_FOLDER
     os.makedirs(report_folder, exist_ok=True)
@@ -986,4 +1035,6 @@ def generate(payload, user_id):
         commit=False,
     )
     db.session.commit()
+    if job_id:
+        report_progress.finish(job_id, message=f"Report {report.report_number} ready.")
     return report
