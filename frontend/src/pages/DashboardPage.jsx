@@ -353,6 +353,27 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-sm font-semibold text-slate-900">Environmental Trends</h2>
                 <p className="text-xs text-slate-500">Chart data is aggregated by the backend from stored measurements.</p>
+                {/* Parameter picker + selected parameters live under the title. */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <div className="w-48">
+                    <SearchableSelect
+                      value=""
+                      onChange={(value) => {
+                        const id = Number(value)
+                        setExtraTypeIds((current) => current.includes(id) ? current : [...current, id])
+                      }}
+                      placeholder="+ Add parameter"
+                      groups={parameterGroups}
+                    />
+                  </div>
+                  {extraChartTypes.map((type) => (
+                    <button key={type.id} type="button"
+                      onClick={() => setExtraTypeIds((current) => current.filter((id) => id !== type.id))}
+                      className="badge bg-brand-50 text-brand-700 hover:bg-brand-100">
+                      {type.name} ×
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <div className="w-44">
@@ -392,26 +413,7 @@ export default function DashboardPage() {
                     }]}
                   />
                 </div>
-                <div className="w-48">
-                  <SearchableSelect
-                    value=""
-                    onChange={(value) => setExtraTypeIds((current) => [...current, Number(value)])}
-                    placeholder="+ Add parameter"
-                    groups={parameterGroups}
-                  />
-                </div>
               </div>
-              {extraChartTypes.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {extraChartTypes.map((type) => (
-                    <button key={type.id} type="button"
-                      onClick={() => setExtraTypeIds((current) => current.filter((id) => id !== type.id))}
-                      className="badge bg-brand-50 text-brand-700 hover:bg-brand-100">
-                      {type.name} ×
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
             {trendsQuery.isLoading ? (
