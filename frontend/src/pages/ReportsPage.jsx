@@ -99,15 +99,17 @@ export default function ReportsPage() {
                 {REPORT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
-            <div>
-              <label className="label">Station</label>
-              <select className="input" value={stationId} onChange={(event) => setStationId(event.target.value)}>
-                <option value="">All stations</option>
-                {(stationsQuery.data?.data || []).map((station) => (
-                  <option key={station.id} value={station.id}>{station.name}</option>
-                ))}
-              </select>
-            </div>
+            {reportType !== 'station_comparison' && (
+              <div>
+                <label className="label">Station</label>
+                <select className="input" value={stationId} onChange={(event) => setStationId(event.target.value)}>
+                  <option value="">All stations</option>
+                  {(stationsQuery.data?.data || []).map((station) => (
+                    <option key={station.id} value={station.id}>{station.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label className="label">Format</label>
               <select className="input" value={format} onChange={(event) => setFormat(event.target.value)}>
@@ -162,7 +164,7 @@ export default function ReportsPage() {
                 ))}
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Leave "Station" above as All stations when comparing; selects here decide which sites appear.
+                Pick up to 3 stations. Each parameter gets an overlaid trend chart, a comparison table and its recorded low/high.
               </p>
             </div>
           )}
