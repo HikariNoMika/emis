@@ -471,44 +471,50 @@ def export_rows(filters, date_from, date_to):
 
 
 def export_source_xlsx(station_id, date_from=None, date_to=None):
-    """Export the preserved source rows in the workbook's original wide format.
+    """Export all preserved source rows as ONE sheet, with gaps filled with 0.
 
-    Each uploaded file becomes one sheet. Column headers and values come from
-    raw_import_records, so the download mirrors what was imported rather than
-    the normalized measurement table.
+    Every import batch for the station is merged into a single sheet ordered by
+    observation time. Rows that share a timestamp are merged (later batches
+    supply columns the earlier ones lacked). Between two consecutive known
+    timestamps, rows are inserted at the station's reading interval with 0 in
+    every measurement column and the expected timestamp/date/time values.
+
+    Column headers and real values still come from raw_import_records, so the
+    original imported data is preserved exactly — only the synthesized gap
+    rows contain zeros.
     """
-    from datetime import timezone
+    from collections import Counter
+    from datetime import timedelta, timezone
 
     from openpyxl import Workbook
 
     from app.extensions import db
-    from app.integrations.timestamp_parser import parse_timestamp
+    from app.integrations.timestamp_parser import build_timezone, parse_timestamp
 
     workbook = Workbook()
     workbook.remove(workbook.active)
-    sheets_written = 0
 
     station = db.session.get(Station, station_id) if station_id else None
     timezone_name = station.timezone if station and station.timezone else "Asia/Manila"
+    local_tz = build_timezone(timezone_name)
+    configured_interval = (
+        station.measurement_interval_seconds if station and station.measurement_interval_seconds else 900
+    )
 
-    def in_range(record):
-        payload = record.raw_payload or {}
+    def parse_row_time(payload):
         observed = parse_timestamp(payload.get("Timestamps"), timezone_name)
         if observed is None:
             date_text = payload.get("Date")
             time_text = payload.get("Time")
             if date_text and time_text:
                 observed = parse_timestamp(f"{date_text} {time_text}", timezone_name)
-        if observed is None:
-            return not (date_from or date_to)
-        if observed.tzinfo is None:
+        if observed is not None and observed.tzinfo is None:
             observed = observed.replace(tzinfo=timezone.utc)
-        if date_from and observed < date_from:
-            return False
-        if date_to and observed > date_to:
-            return False
-        return True
+        return observed
 
+    # Collect and merge every source row across all batches, keyed by UTC time.
+    merged = {}
+    headers = []
     batches = ImportBatch.query.filter_by(station_id=station_id).order_by(
         ImportBatch.id.asc()
     ).all()
@@ -518,44 +524,81 @@ def export_source_xlsx(station_id, date_from=None, date_to=None):
             .order_by(RawImportRecord.row_number.asc())
             .all()
         )
-        records = [record for record in candidates if in_range(record)]
-        if not records:
-            continue
-
-        headers = []
-        for record in records:
-            for key in (record.raw_payload or {}).keys():
+        for record in candidates:
+            payload = dict(record.raw_payload or {})
+            observed = parse_row_time(payload)
+            if observed is None:
+                continue
+            if date_from and observed < date_from:
+                continue
+            if date_to and observed > date_to:
+                continue
+            for key in payload:
                 if key not in headers:
                     headers.append(key)
+            if observed in merged:
+                for key, value in payload.items():
+                    if merged[observed].get(key) in (None, "") and value not in (None, ""):
+                        merged[observed][key] = value
+            else:
+                merged[observed] = payload
+
+    if not merged:
+        sheet = workbook.create_sheet("no_data")
+        sheet.append(["No source rows found for the selected filters."])
+    else:
         if "Timestamps" in headers:
             headers.remove("Timestamps")
             headers.insert(0, "Timestamps")
 
-        raw_name = (
-            (batch.sheet_names or [None])[0]
-            or batch.original_filename
-            or f"import_{batch.id}"
+        ordered_times = sorted(merged)
+
+        # Prefer the interval actually present in the data; fall back to the
+        # station's configured interval when it cannot be determined.
+        deltas = [later - earlier for earlier, later in zip(ordered_times, ordered_times[1:])]
+        positive = [delta for delta in deltas if delta.total_seconds() > 0]
+        fill_interval = (
+            Counter(positive).most_common(1)[0][0]
+            if positive else timedelta(seconds=configured_interval)
         )
-        sheet = workbook.create_sheet(
-            str(raw_name)[:31].replace("[", "").replace("]", "")
-            .replace(":", "").replace("*", "").replace("?", "")
-            .replace("/", "").replace("\\", "") or f"import_{batch.id}"
-        )
-        sheet.append(headers)
-        for record in records:
-            payload = record.raw_payload or {}
+        if not (timedelta(seconds=60) <= fill_interval <= timedelta(days=1)):
+            fill_interval = timedelta(seconds=configured_interval)
+
+        def clean(value):
+            if isinstance(value, (int, float, str)):
+                return value
+            return None if value is None else str(value)
+
+        def gap_row(moment):
+            local = moment.astimezone(local_tz).replace(tzinfo=None)
             row = []
             for header in headers:
-                value = payload.get(header)
-                row.append(value if isinstance(value, (int, float, str)) else (
-                    None if value is None else str(value)
-                ))
-            sheet.append(row)
-        sheets_written += 1
+                lower = header.lower()
+                if lower == "timestamps":
+                    row.append(local.strftime("%Y-%m-%dT%H:%M:%S"))
+                elif lower.startswith("date"):
+                    row.append(local.strftime("%m/%d/%Y"))
+                elif lower.startswith("time"):
+                    row.append(local.strftime("%I:%M:%S %p"))
+                else:
+                    row.append(0)
+            return row
 
-    if sheets_written == 0:
-        sheet = workbook.create_sheet("no_data")
-        sheet.append(["No source rows found for the selected filters."])
+        sheet = workbook.create_sheet("source")
+        sheet.append(headers)
+        max_rows = 1048576  # Excel sheet limit
+        for index, observed in enumerate(ordered_times):
+            if index:
+                cursor = ordered_times[index - 1] + fill_interval
+                while cursor < observed:
+                    if sheet.max_row >= max_rows - 1:
+                        break
+                    sheet.append(gap_row(cursor))
+                    cursor += fill_interval
+            payload = merged[observed]
+            sheet.append([clean(payload.get(header)) for header in headers])
+            if sheet.max_row >= max_rows - 1:
+                break
 
     output = io.BytesIO()
     workbook.save(output)
