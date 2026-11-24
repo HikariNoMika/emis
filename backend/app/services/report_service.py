@@ -721,7 +721,26 @@ def _build_comparison_pdf(path, title, date_from, date_to, data):
         "Missing readings are never counted as zero.",
         styles["Normal"],
     ))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
+
+    # Legend: map each line colour to a station name + code.
+    legend_rows = [["Line", "Station", "Code"]]
+    for i, station in enumerate(data["stations"]):
+        legend_rows.append(["", station.name, station.station_code])
+    legend = Table(legend_rows, repeatRows=1, colWidths=[36, 250, 150])
+    legend_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174a7c")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]
+    for i, station in enumerate(data["stations"], start=1):
+        legend_style.append(("BACKGROUND", (0, i), (0, i), palette[(i - 1) % len(palette)]))
+    legend.setStyle(TableStyle(legend_style))
+    story.append(Paragraph("Chart legend", styles["Heading2"]))
+    story.append(legend)
+    story.append(Spacer(1, 8))
 
     story.append(Paragraph("How to read this report", styles["Heading2"]))
     for line in [
@@ -800,6 +819,9 @@ def _build_comparison_xlsx(path, title, date_from, date_to, data):
     overview.title = "Overview"
     overview.append(["Report", title])
     overview.append(["Stations", ", ".join(s.name for s in data["stations"])])
+    overview.append(["Chart colours", "blue = first station, orange = second, green = third (see name + code below)"])
+    for i, s in enumerate(data["stations"]):
+        overview.append([f"Station {i + 1}", f"{s.name} ({s.station_code})"])
     overview.append(["Period from", to_iso(date_from)])
     overview.append(["Period to", to_iso(date_to)])
     overview.append(["Generated", to_iso(utcnow())])
