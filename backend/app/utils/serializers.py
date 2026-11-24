@@ -21,6 +21,7 @@ def station_to_dict(station):
         "id": station.id,
         "station_code": station.station_code,
         "name": station.name,
+        "station_type": station.station_type,
         "site_name": station.site_name,
         "description": station.description,
         "latitude": _number(station.latitude),

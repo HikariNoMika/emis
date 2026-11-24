@@ -13,11 +13,13 @@ import { useMeasurementTypes, useSensors } from '../hooks/useSensors'
 import { useStations } from '../hooks/useStations'
 import { extractError } from '../services/api'
 import importService from '../services/importService'
+import { STATION_TYPES } from '../utils/stations'
 
 export default function DataManagementPage() {
   const queryClient = useQueryClient()
   const [file, setFile] = useState(null)
   const [stationId, setStationId] = useState('')
+  const [destinationType, setDestinationType] = useState('AWS')
   const [page, setPage] = useState(1)
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [notice, setNotice] = useState('')
@@ -81,6 +83,7 @@ export default function DataManagementPage() {
     const formData = new FormData()
     formData.append('file', file)
     if (stationId) formData.append('station_id', stationId)
+    formData.append('station_type', destinationType)
     uploadMutation.mutate(formData)
   }
 
@@ -154,13 +157,24 @@ export default function DataManagementPage() {
             />
           </div>
           <div className="sm:w-64">
+            <label className="label" htmlFor="import-destination">Destination type</label>
+            <select id="import-destination" className="input" value={destinationType}
+              onChange={(event) => { setDestinationType(event.target.value); setStationId('') }}>
+              {STATION_TYPES.map((type) => (
+                <option key={type.value} value={type.value}>{type.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:w-64">
             <label className="label" htmlFor="import-station">Station (optional if detected)</label>
             <select id="import-station" className="input" value={stationId}
               onChange={(event) => setStationId(event.target.value)}>
               <option value="">Auto-detect from metadata</option>
-              {(stationsQuery.data?.data || []).map((station) => (
-                <option key={station.id} value={station.id}>{station.station_code} — {station.name}</option>
-              ))}
+              {(stationsQuery.data?.data || [])
+                .filter((station) => (station.station_type || 'AWS') === destinationType)
+                .map((station) => (
+                  <option key={station.id} value={station.id}>{station.station_code} — {station.name}</option>
+                ))}
             </select>
           </div>
           <button type="submit" className="btn-primary" disabled={!file || uploadMutation.isPending}>
@@ -223,13 +237,34 @@ export default function DataManagementPage() {
                     </select>
                   </div>
                   <div>
+                    <label className="label">Destination type</label>
+                    <select className="input" value={mapping.station_type || 'AWS'}
+                      onChange={(event) => {
+                        const nextType = event.target.value
+                        const selected = (stationsQuery.data?.data || [])
+                          .find((station) => station.id === mapping.station_id)
+                        const keep = selected && (selected.station_type || 'AWS') === nextType
+                        setDraftMapping({
+                          ...mapping,
+                          station_type: nextType,
+                          station_id: keep ? mapping.station_id : null,
+                        })
+                      }}>
+                      {STATION_TYPES.map((type) => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="label">Station</label>
                     <select className="input" value={mapping.station_id || ''}
                       onChange={(event) => updateMappingField('station_id', event.target.value ? Number(event.target.value) : null)}>
                       <option value="">Not selected</option>
-                      {(stationsQuery.data?.data || []).map((station) => (
-                        <option key={station.id} value={station.id}>{station.station_code} — {station.name}</option>
-                      ))}
+                      {(stationsQuery.data?.data || [])
+                        .filter((station) => (station.station_type || 'AWS') === (mapping.station_type || 'AWS'))
+                        .map((station) => (
+                          <option key={station.id} value={station.id}>{station.station_code} — {station.name}</option>
+                        ))}
                     </select>
                   </div>
                   <div>

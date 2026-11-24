@@ -165,6 +165,27 @@ class Database:
             raise RuntimeError("Database has not been initialized. Call db.init(settings).")
         return self._session
 
+    def ensure_columns(self):
+        """Add newer columns to databases created before this version.
+
+        Works for both SQLite and PostgreSQL: inspects the real table, then
+        issues a guarded ALTER only when the column is missing.
+        """
+        from sqlalchemy import inspect as sa_inspect, text as sa_text
+
+        if self.engine is None:
+            return
+        inspector = sa_inspect(self.engine)
+        if not inspector.has_table("stations"):
+            return
+        existing = {column["name"] for column in inspector.get_columns("stations")}
+        if "station_type" not in existing:
+            with self.engine.begin() as connection:
+                connection.execute(sa_text(
+                    "ALTER TABLE stations ADD COLUMN station_type "
+                    "VARCHAR(30) NOT NULL DEFAULT 'AWS'"
+                ))
+
     def create_all(self):
         Base.metadata.create_all(self.engine)
 

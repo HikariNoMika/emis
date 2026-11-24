@@ -38,7 +38,7 @@ def _as_float(value):
         return None
 
 
-def station_from_metadata(metadata, uploaded_by_id=None):
+def station_from_metadata(metadata, uploaded_by_id=None, station_type="AWS"):
     """Create a station (and its sensors) from a workbook's Metadata sheet.
 
     Called when the file's station code does not match any existing station.
@@ -58,6 +58,7 @@ def station_from_metadata(metadata, uploaded_by_id=None):
     interval = _as_float(meta.get("interval_seconds"))
     station = Station(
         station_code=code[:50],
+        station_type=station_type,
         name=str(meta.get("name") or meta.get("site") or code).strip()[:150],
         site_name=(str(meta.get("site")).strip()[:150] or None) if meta.get("site") else None,
         latitude=_as_float(meta.get("latitude")),
@@ -99,7 +100,7 @@ def station_from_metadata(metadata, uploaded_by_id=None):
     return station
 
 
-def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None):
+def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None, station_type="AWS"):
     """Steps 1-4: save, inspect, detect metadata and preserve raw rows."""
     original_filename = file_storage.filename or ""
     extension = os.path.splitext(original_filename)[1].lower()
@@ -142,6 +143,13 @@ def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None):
         mapping, warnings, detected_station = suggest_mapping(
             snapshot, measurement_types, stations, explicit_sheet=sheet_name
         )
+        # Destination type chosen at upload (or in the preview mapping).
+        mapping["station_type"] = station_type
+
+        # Filter auto-detection to stations of the chosen type so a water-level
+        # file cannot silently attach to a weather station.
+        if not station_id and detected_station and detected_station.station_type != station_type:
+            detected_station = None
 
         # An explicit selection from the upload form wins over auto-detection.
         if station_id is not None:
@@ -157,7 +165,7 @@ def upload(file_storage, uploaded_by_id, station_id=None, sheet_name=None):
             # No existing station matched. Create it from the workbook's own
             # Metadata sheet so the administrator does not have to type it in.
             auto_station = station_from_metadata(
-                snapshot.get("metadata", {}), uploaded_by_id
+                snapshot.get("metadata", {}), uploaded_by_id, station_type
             )
             if auto_station:
                 mapping["station_id"] = auto_station.id
@@ -255,12 +263,29 @@ def update_mapping(batch, payload, user_id):
         mapping["measurement_columns"] = payload["measurement_columns"]
     if "sensor_mapping" in payload:
         mapping["sensor_mapping"] = payload["sensor_mapping"]
+    if "station_type" in payload:
+        from app.constants import STATION_TYPES
+        station_type = payload["station_type"]
+        if station_type not in STATION_TYPES:
+            raise ValidationAppError(f"Station type must be one of {STATION_TYPES}.")
+        mapping["station_type"] = station_type
+        # Re-tag the selected station so it appears in the matching view.
+        if mapping.get("station_id"):
+            selected = db.session.get(Station, mapping["station_id"])
+            if selected and selected.station_type != station_type:
+                selected.station_type = station_type
+
     if "station_id" in payload:
         station_id = payload["station_id"]
         if station_id is not None and db.session.get(Station, station_id) is None:
             raise ValidationAppError(f"Station {station_id} does not exist.")
         mapping["station_id"] = station_id
         batch.station_id = station_id
+        # Keep the selected station consistent with the chosen destination.
+        if station_id is not None and mapping.get("station_type"):
+            selected = db.session.get(Station, station_id)
+            if selected and selected.station_type != mapping["station_type"]:
+                selected.station_type = mapping["station_type"]
 
     # Validate references now so processing cannot fail halfway through.
     if mapping.get("station_id"):

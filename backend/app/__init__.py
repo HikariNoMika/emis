@@ -32,6 +32,8 @@ def create_app(environment=None):
         if settings.ENVIRONMENT != "production":
             # Development/testing convenience. Production uses Alembic migrations.
             db.create_all()
+        # Bring older databases up to date (adds station_type if missing).
+        db.ensure_columns()
         # Ensure the measurement catalogue and example categories exist.
         try:
             from app.services.accomplishment_service import seed_defaults

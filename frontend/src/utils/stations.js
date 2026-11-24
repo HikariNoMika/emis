@@ -1,3 +1,14 @@
+// Destination/source type for a station. Add a new entry here and in the
+// backend STATION_TYPES to support a new source family.
+export const STATION_TYPES = [
+  { value: 'AWS', label: 'Automated Weather Station (AWS)' },
+  { value: 'AWLS', label: 'Automated Water Level Station (AWLS)' },
+]
+
+export function stationTypeLabel(value) {
+  return STATION_TYPES.find((type) => type.value === value)?.label || value || '—'
+}
+
 /** Match station names loosely: "Sto Niño" should find "Sto Nino, South Co". */
 export function normalizeStationName(value) {
   return (value || '')

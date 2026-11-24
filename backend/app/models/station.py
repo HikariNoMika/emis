@@ -1,5 +1,6 @@
 """Monitoring stations and their health snapshots."""
 
+from app.constants import STATION_TYPES
 from app.extensions import db
 from app.utils.time import utcnow
 
@@ -19,6 +20,10 @@ class Station(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     station_code = db.Column(db.String(50), unique=True, nullable=False, index=True)
     name = db.Column(db.String(150), nullable=False)
+    # Which family of source/view this station belongs to (AWS, AWLS, ...).
+    station_type = db.Column(
+        db.String(30), nullable=False, default="AWS", index=True
+    )
     site_name = db.Column(db.String(150), nullable=True)
     description = db.Column(db.Text, nullable=True)
 

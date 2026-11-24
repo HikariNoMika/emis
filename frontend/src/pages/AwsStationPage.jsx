@@ -27,6 +27,7 @@ import { extractError } from '../services/api'
 import importService from '../services/importService'
 import measurementService from '../services/measurementService'
 import stationService from '../services/stationService'
+import { stationTypeLabel } from '../utils/stations'
 
 function dateInputToIso(value, endOfDay = false) {
   if (!value) return undefined
@@ -306,7 +307,7 @@ export default function AwsStationPage({
     <div>
       <PageHeader
         title={`${brand} — ${station.name}`}
-        description={description}
+        description={`${stationTypeLabel(station.station_type)} · ${description}`}
         actions={
           <>
             <button type="button" className="btn-secondary" onClick={() => setEditOpen(true)}>

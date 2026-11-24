@@ -13,6 +13,7 @@ class ImportMappingSchema(BaseModel):
     sensor_mapping: Optional[Dict[str, Any]] = None
     timezone: Optional[str] = None
     station_id: Optional[int] = None
+    station_type: Optional[str] = None
 
 
 class ImportQuerySchema(BaseModel):

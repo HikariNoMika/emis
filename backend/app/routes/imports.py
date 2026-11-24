@@ -39,9 +39,12 @@ async def upload(
     file: UploadFile = File(...),
     station_id: int | None = Form(None),
     sheet_name: str | None = Form(None),
+    station_type: str = Form("AWS"),
     user=Depends(get_current_user),
 ):
-    batch = import_service.upload(UploadAdapter(file), user.id, station_id, sheet_name)
+    batch = import_service.upload(
+        UploadAdapter(file), user.id, station_id, sheet_name, station_type
+    )
     return ok(
         data=import_batch_to_dict(batch),
         message="File uploaded and inspected. Review the mapping before processing.",

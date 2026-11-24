@@ -1,9 +1,9 @@
+import { useState } from 'react'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
 import { useStations } from '../hooks/useStations'
 import { extractError } from '../services/api'
-import { findStationByName } from '../utils/stations'
 import AwsStationPage from './AwsStationPage'
 
 // The water-level station uses its own sensors — only these parameters are
@@ -17,11 +17,12 @@ const AWLS_TYPE_CODES = [
 ]
 
 /**
- * Automated Water Level Station. This view is locked to NAMNAMA; CSV uploads
- * for that station supply the water-level readings.
+ * Automated Water Level Station view. Shows every station tagged with the
+ * AWLS destination type (set in the import preview or station settings).
  */
 export default function AwlsPage() {
   const stationsQuery = useStations({ page: 1, per_page: 100 })
+  const [selectedId, setSelectedId] = useState(null)
 
   if (stationsQuery.isLoading) return <LoadingSpinner label="Loading AWLS…" />
   if (stationsQuery.isError) {
@@ -33,23 +34,47 @@ export default function AwlsPage() {
     )
   }
 
-  const station = findStationByName(stationsQuery.data?.data || [], 'NAMNAMA')
+  const awlsStations = (stationsQuery.data?.data || []).filter(
+    (station) => station.station_type === 'AWLS',
+  )
 
-  if (!station) {
+  if (awlsStations.length === 0) {
     return (
       <EmptyState
-        title="NAMNAMA station not found"
-        description="Upload a water-level CSV for NAMNAMA from Data Management; the station and its readings will appear here."
+        title="No water-level stations yet"
+        description="Set a station's Destination type to AWLS in the import preview or station settings, then upload its water-level file."
       />
     )
   }
 
+  const station = awlsStations.find((item) => item.id === selectedId) || awlsStations[0]
+
   return (
-    <AwsStationPage
-      fixedStationId={station.id}
-      allowedTypeCodes={AWLS_TYPE_CODES}
-      brand="AWLS"
-      description="Automated Water Level Station: water-level readings, statistics and trends for NAMNAMA."
-    />
+    <div>
+      {awlsStations.length > 1 && (
+        <div className="card mb-4 flex items-center gap-3 p-3">
+          <label className="label" htmlFor="awls-station">Water-level station</label>
+          <select
+            id="awls-station"
+            className="input w-72"
+            value={station.id}
+            onChange={(event) => setSelectedId(Number(event.target.value))}
+          >
+            {awlsStations.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.station_code} — {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      <AwsStationPage
+        key={station.id}
+        fixedStationId={station.id}
+        allowedTypeCodes={AWLS_TYPE_CODES}
+        brand="AWLS"
+        description="Automated Water Level Station: water-level readings, statistics and trends."
+      />
+    </div>
   )
 }

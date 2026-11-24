@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { extractError } from '../../services/api'
+import { STATION_TYPES } from '../../utils/stations'
 
 const optionalNumber = z.preprocess(
   (value) => (value === '' || value === null || value === undefined ? undefined : Number(value)),
@@ -11,6 +12,7 @@ const optionalNumber = z.preprocess(
 const stationSchema = z.object({
   station_code: z.string().min(1, 'Station code is required').max(50),
   name: z.string().min(1, 'Station name is required').max(150),
+  station_type: z.enum(['AWS', 'AWLS']),
   site_name: z.string().max(150).optional().or(z.literal('')),
   description: z.string().optional().or(z.literal('')),
   latitude: optionalNumber.refine((v) => v === undefined || (v >= -90 && v <= 90), 'Must be between -90 and 90'),
@@ -29,7 +31,7 @@ const STATUSES = ['ONLINE', 'DELAYED', 'OFFLINE', 'MAINTENANCE', 'UNKNOWN']
 function buildDefaults(station) {
   if (!station) {
     return {
-      station_code: '', name: '', site_name: '', description: '',
+      station_code: '', name: '', station_type: 'AWS', site_name: '', description: '',
       latitude: '', longitude: '', elevation: '', timezone: 'Asia/Manila',
       measurement_interval_seconds: 900, installation_date: '',
       operational_status: 'UNKNOWN', device_serial_number: '', remarks: '',
@@ -38,6 +40,7 @@ function buildDefaults(station) {
   return {
     station_code: station.station_code || '',
     name: station.name || '',
+    station_type: station.station_type || 'AWS',
     site_name: station.site_name || '',
     description: station.description || '',
     latitude: station.latitude ?? '',
@@ -99,6 +102,15 @@ export default function StationForm({ station, onSubmit, onCancel, isWorking = f
       <div className="grid gap-4 sm:grid-cols-2">
         {field('station_code', 'Station code', { placeholder: '06-02478', disabled: Boolean(station) })}
         {field('name', 'Station name', { placeholder: 'Salacafe' })}
+        <div>
+          <label className="label" htmlFor="station_type">Destination type</label>
+          <select id="station_type" className="input" {...register('station_type')}>
+            {STATION_TYPES.map((type) => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+          </select>
+          {errors.station_type && <p className="mt-1 text-xs text-red-600">{errors.station_type.message}</p>}
+        </div>
         {field('site_name', 'Site name', { placeholder: 'DENRFMB-WATERSHED' })}
         {field('device_serial_number', 'Device serial number', { placeholder: '929' })}
         {field('latitude', 'Latitude', { step: 'any', placeholder: '6.11582' })}

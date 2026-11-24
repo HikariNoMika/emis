@@ -11,6 +11,7 @@ STATION_STATUSES = ("ONLINE", "DELAYED", "OFFLINE", "MAINTENANCE", "UNKNOWN")
 class StationSchema(BaseModel):
     station_code: Optional[str] = Field(default=None, max_length=50)
     name: Optional[str] = Field(default=None, max_length=150)
+    station_type: str = "AWS"
     site_name: Optional[str] = Field(default=None, max_length=150)
     description: Optional[str] = None
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -29,6 +30,14 @@ class StationSchema(BaseModel):
     def check_status(cls, value):
         if value not in STATION_STATUSES:
             raise ValueError(f"Status must be one of {STATION_STATUSES}")
+        return value
+
+    @field_validator("station_type")
+    @classmethod
+    def check_type(cls, value):
+        from app.constants import STATION_TYPES
+        if value not in STATION_TYPES:
+            raise ValueError(f"Station type must be one of {STATION_TYPES}")
         return value
 
 
