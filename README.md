@@ -5,9 +5,8 @@ environmental monitoring stations. Built with **FastAPI** (Python) and **React +
 (plain JavaScript / JSX).
 
 > **Status: Backend migrated to FastAPI; Phases 1–6 and 8 code complete; Phase 7 scaffolded (blocked on official API docs).**
-> All functional modules are implemented. Verification is still pending because
-> the build environment had no Python or Node runtime — see "Important notes".
-> The system was built one phase at a time, with tests written for each module.
+> All functional modules are implemented. Verified locally: **64 backend tests pass**
+> and the frontend production build succeeds. See section 5 for a one-command setup.
 
 ---
 
@@ -83,9 +82,10 @@ emis/
 │  ├─ package.json
 │  ├─ vite.config.js
 │  ├─ tailwind.config.js
+│  ├─ nginx.conf          # serves the SPA and proxies /api to FastAPI
 │  └─ Dockerfile
-├─ docker/
-│  └─ nginx.conf
+├─ scripts/
+│  └─ bootstrap_local.py   # one-command SQLite setup for a fresh clone
 ├─ docker-compose.yml
 └─ README.md
 ```
@@ -126,60 +126,81 @@ A detailed diagram/notes will be expanded as later phases add constraints.
 
 ---
 
-## 5. Getting started (local development)
+## 5. Getting started
 
 ### 5.1 Prerequisites
-- Python 3.11+ and Node.js 20+
-- PostgreSQL 16 + TimescaleDB **or** Docker / Docker Compose (recommended)
+- Python 3.11+ and Node.js 20+ for local development
+- Docker / Docker Compose only if you want the containerised stack
 
-### 5.2 First-time setup (Docker)
+### 5.2 Quick start — local SQLite (recommended)
+
+From the repository root, on a fresh clone:
+
+```bash
+python scripts/bootstrap_local.py
+```
+
+This creates `backend/venv`, installs `requirements.txt`, writes `backend/.env`
+with a SQLite database and fresh random secrets, then runs `seed.py` (schema,
+admin account, measurement catalogue). It never overwrites an existing `.env`
+or database, so it is safe to re-run.
+
+Then start the two servers in separate terminals:
+
+```bash
+# Terminal 1 — backend
+cd backend
+.\venv\Scripts\python.exe run.py     # http://localhost:5000
+# macOS/Linux: ./venv/bin/python run.py
+
+# Terminal 2 — frontend
+cd frontend
+npm install
+npm run dev                          # http://localhost:5173
+```
+
+Default login: **admin / ChangeThisPassword123!** (set `ADMIN_PASSWORD` in
+`backend/.env` before bootstrapping to change it). Vite proxies `/api` to the
+backend during development; Nginx does the same in the Docker image.
+
+To keep imported data when moving to another machine, copy
+`backend/emis_dev.db` and the whole `backend/uploads/` folder across — both are
+git-ignored and therefore not part of a clone.
+
+### 5.3 Docker / PostgreSQL
+
+Copy the environment templates, edit the root `.env` (database URL, secrets,
+CORS origins), then start the all-in-one stack:
 
 ```bash
 cp .env.example .env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
-
 docker compose up -d --build
-docker compose exec backend alembic upgrade head
-docker compose exec backend python seed.py
+docker compose exec backend python seed.py   # schema + admin in production mode
 ```
 
-Then open <http://localhost:5173>. Default seed login is printed by `seed.py`
-(you are forced to change the password on first use in later phases — for Phase 1
-use the credentials from your `.env`).
-
-### 5.3 Running without Docker
-
-```bash
-# Backend
-cd backend
-python -m venv venv
-# Windows: venv\Scripts\activate        macOS/Linux: source venv/bin/activate
-pip install -r requirements.txt
-# create an empty PostgreSQL database named "emis" first
-alembic upgrade head
-python seed.py
-python run.py            # http://localhost:5000
-
-# Frontend (second terminal)
-cd frontend
-npm install
-npm run dev              # http://localhost:5173
-```
+Open <http://localhost:5173>. For an existing external PostgreSQL server, use
+`docker-compose.server.yml` and the `init-db` profile described at the end of
+this README.
 
 ### 5.4 Database migrations
 
+There are **no Alembic revisions checked in yet** (`migrations/versions/` only
+contains `.gitkeep`). A fresh install gets its schema from `seed.py` (SQLite) or
+the `init-db` compose profile (PostgreSQL), not from `alembic upgrade head`.
+To start versioning schema changes:
+
 ```bash
 cd backend
-alembic revision --autogenerate -m "message"   # first revision
+alembic revision --autogenerate -m "Initial schema"
 alembic upgrade head
 alembic downgrade -1         # roll back one revision
-alembic current             # show applied revision
+alembic current              # show applied revision
 ```
 
-The TimescaleDB hypertable is created by a migration that safely no-ops when
-TimescaleDB/PostgreSQL is unavailable (e.g. SQLite in tests). See
-`backend/MIGRATIONS_NOTES.md`.
+The TimescaleDB hypertable SQL is documented in `backend/MIGRATIONS_NOTES.md`
+but is not yet applied by a checked-in revision.
 
 ### 5.5 Backup / restore
 
@@ -204,9 +225,9 @@ python -m venv venv
 ```
 
 The tests use an in-memory SQLite database, so no external database is required.
-**Verified result:** `56 passed` (including 4 tests against the real supplied
-Salacafe workbook). The venv has already been created in `backend/venv` on this
-machine.
+**Verified result:** `64 passed` on Python 3.12.10 (including 4 tests against the
+real supplied Salacafe workbook). On Windows, use `npm.cmd` instead of `npm` in
+PowerShell if the `npm.ps1` execution policy blocks it.
 
 ---
 
@@ -324,10 +345,9 @@ machine.
    and shown in the import preview. Port banners in row 1 are recovered too, so
    the two soil-water columns (Ports 5 and 6) can be mapped to separate sensors
    instead of collapsing into one duplicate.
-2. **Both sides were verified locally:** backend `56 passed` (Python 3.11.9 in
-   `backend/venv`) and frontend `npm run build` succeeds (Node 26 / Vite 5).
-   Note: on this machine `npm.ps1` is blocked by PowerShell's execution policy,
-   so use `npm.cmd` from PowerShell, or run npm from Command Prompt.
+2. **Both sides were verified locally:** backend `64 passed` (Python 3.12.10) and frontend `npm run build` succeeds
+   (Node 26 / Vite 5). On Windows, PowerShell's execution policy can block
+   `npm.ps1`; use `npm.cmd` instead.
 3. JWT logout uses a process-local blocklist in `utils/security.py`. For
    multi-worker production, switch it to Redis (Redis is already in Compose).
 4. Data freshness ≠ equipment connectivity. A late Excel upload will be shown
