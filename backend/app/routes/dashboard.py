@@ -14,6 +14,12 @@ def summary(user=Depends(get_current_user)):
     return ok(data=dashboard_service.summary())
 
 
+@dashboard_bp.get("/data-progress")
+def data_progress(year: int | None = Query(None), user=Depends(get_current_user)):
+    """Quarter-by-quarter data processing progress for a year (default: current)."""
+    return ok(data=dashboard_service.data_progress(year))
+
+
 @dashboard_bp.get("/environmental-summary")
 def environmental_summary(limit: int = Query(200, ge=1, le=500), user=Depends(get_current_user)):
     return ok(data=dashboard_service.environmental_summary(limit))

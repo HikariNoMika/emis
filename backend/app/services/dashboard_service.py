@@ -6,6 +6,8 @@ placeholders or hard-coded values. Later phases will extend these endpoints
 with charts and more detailed statistics.
 """
 
+from datetime import date, datetime, timezone
+
 from app.extensions import db
 from app.models import (
     Alert,
@@ -60,6 +62,65 @@ def summary():
         "data_quality_warnings": actionable_warnings,
         "latest_import_at": to_iso(
             latest_batch.file_imported_at if latest_batch else None
+        ),
+        "data_progress": data_progress(),
+    }
+
+
+def data_progress(year=None):
+    """Quarter-based data-processing progress for a year.
+
+    Each quarter that has at least one stored reading counts as 25%, so four
+    quarters with data = 100%. A quarter with no readings contributes 0. This
+    is computed entirely from the database — no hardcoded percentages.
+
+    Returns the percentage, the current quarter, and detail for all four
+    quarters (bounds, reading counts, stations and the latest reading).
+    """
+    from app.utils.time import utcnow
+
+    if year is None:
+        year = utcnow().year
+    now = utcnow()
+
+    # Calendar quarter bounds (inclusive start, exclusive end), in UTC.
+    quarter_months = {1: (1, 4), 2: (4, 7), 3: (7, 10), 4: (10, 13)}
+    quarters = []
+    covered = 0
+    for number, (start_month, end_month) in quarter_months.items():
+        start = datetime(year, start_month, 1, tzinfo=timezone.utc)
+        if end_month > 12:
+            end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end = datetime(year, end_month, 1, tzinfo=timezone.utc)
+
+        count = Measurement.query.filter(
+            Measurement.observation_time >= start,
+            Measurement.observation_time < end,
+        ).count()
+        if count > 0:
+            covered += 1
+
+        quarters.append({
+            "quarter": number,
+            "label": f"Q{number} {year}",
+            "start": to_iso(start),
+            "end": to_iso(end),
+            "readings": count,
+            "has_data": count > 0,
+            "contribution_percent": 25 if count > 0 else 0,
+        })
+
+    current_quarter = (now.month - 1) // 3 + 1 if now.year == year else None
+    return {
+        "year": year,
+        "percent": covered * 25,
+        "quarters_complete": covered,
+        "current_quarter": current_quarter,
+        "quarters": quarters,
+        "note": (
+            "Each quarter with at least one stored reading counts as 25%. "
+            "Missing quarters are never treated as zero readings."
         ),
     }
 

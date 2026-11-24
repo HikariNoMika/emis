@@ -10,6 +10,14 @@ export function useDashboardSummary() {
   })
 }
 
+export function useDataProgress(year) {
+  return useQuery({
+    queryKey: ['dashboard', 'data-progress', year],
+    queryFn: () => dashboardService.getDataProgress(year),
+    enabled: Boolean(year),
+  })
+}
+
 export function useEnvironmentalSummary() {
   return useQuery({
     queryKey: ['dashboard', 'environmental-summary'],

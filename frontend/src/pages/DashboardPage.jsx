@@ -20,10 +20,12 @@ import StatusBadge from '../components/ui/StatusBadge'
 import SummaryCard from '../components/ui/SummaryCard'
 import {
   useDashboardSummary,
+  useDataProgress,
   useEnvironmentalSummary,
   useRecentAlerts,
   useStationStatus,
 } from '../hooks/useDashboard'
+import { useAccomplishmentSummary } from '../hooks/useAccomplishment'
 import { useTrends } from '../hooks/useMeasurements'
 import { useMeasurementTypes } from '../hooks/useSensors'
 import { useStations } from '../hooks/useStations'
@@ -46,6 +48,12 @@ export default function DashboardPage() {
   const environmental = useEnvironmentalSummary()
   const stations = useStationStatus()
   const alerts = useRecentAlerts()
+
+  // Data-processing progress and accomplishment highlights for the current year.
+  const currentYear = new Date().getFullYear()
+  const [progressYear, setProgressYear] = useState(currentYear)
+  const dataProgress = useDataProgress(progressYear)
+  const accomplishment = useAccomplishmentSummary(progressYear)
 
   // Chart controls. Values are always fetched from the API.
   const [chartStation, setChartStation] = useState('')
@@ -157,7 +165,116 @@ export default function DashboardPage() {
             />
           </section>
 
-          {/* B. Latest measurements */}
+          {/* B. Data processing progress + accomplishment highlights */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <section className="card p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Data Processing Progress</h2>
+                  <p className="text-xs text-slate-500">
+                    Each quarter with readings contributes 25% for {progressYear}.
+                  </p>
+                </div>
+                <select
+                  className="input w-24 text-xs"
+                  value={progressYear}
+                  onChange={(event) => setProgressYear(Number(event.target.value))}
+                  aria-label="Progress year"
+                >
+                  {[currentYear, currentYear - 1, currentYear - 2].map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              {dataProgress.isLoading ? (
+                <LoadingSpinner label="Loading progress…" />
+              ) : dataProgress.isError ? (
+                <ErrorState message="Could not load progress." onRetry={dataProgress.refetch} />
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center gap-4">
+                    <div className="text-3xl font-semibold text-brand-700">
+                      {dataProgress.data?.percent ?? 0}%
+                    </div>
+                    <div className="flex-1">
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-brand-600 transition-all"
+                          style={{ width: `${dataProgress.data?.percent ?? 0}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {dataProgress.data?.quarters_complete ?? 0} of 4 quarters with data
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(dataProgress.data?.quarters || []).map((q) => (
+                      <div
+                        key={q.quarter}
+                        className={`rounded border px-2 py-2 text-center ${
+                          q.has_data
+                            ? 'border-green-200 bg-green-50'
+                            : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <p className="text-xs font-semibold text-slate-700">{q.label}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {q.has_data ? `+${q.contribution_percent}%` : 'No data'}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-slate-400">
+                          {q.readings.toLocaleString()} readings
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="card p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Accomplishment Highlights</h2>
+                  <p className="text-xs text-slate-500">
+                    Weighted quarterly scores for {progressYear}.
+                  </p>
+                </div>
+                <span className="text-xs text-slate-400">see Quarterly Accomplishment</span>
+              </div>
+              {accomplishment.isLoading ? (
+                <LoadingSpinner label="Loading accomplishment…" />
+              ) : accomplishment.isError ? (
+                <ErrorState message="Could not load accomplishment." onRetry={accomplishment.refetch} />
+              ) : (
+                <>
+                  <div className="mb-3 flex items-center gap-4">
+                    <div className="text-3xl font-semibold text-brand-700">
+                      {accomplishment.data?.annual?.overall != null
+                        ? `${Number(accomplishment.data.annual.overall).toFixed(1)}%`
+                        : '—'}
+                    </div>
+                    <p className="text-xs text-slate-500">Annual accomplishment</p>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[1, 2, 3, 4].map((number) => {
+                      const quarter = accomplishment.data?.quarters?.[`Q${number}`]
+                      return (
+                        <div key={number} className="rounded border border-slate-200 bg-slate-50 px-2 py-2 text-center">
+                          <p className="text-xs font-semibold text-slate-700">Q{number}</p>
+                          <p className="mt-1 text-sm font-medium text-slate-800">
+                            {quarter?.overall != null ? `${Number(quarter.overall).toFixed(1)}%` : '—'}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </section>
+          </div>
+
+          {/* C. Latest measurements */}
           <section className="card mt-6 overflow-hidden">
             <button
               type="button"

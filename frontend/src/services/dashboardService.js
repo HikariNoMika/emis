@@ -5,6 +5,10 @@ export const dashboardService = {
     return extractData(await api.get('/dashboard/summary'))
   },
 
+  async getDataProgress(year) {
+    return extractData(await api.get('/dashboard/data-progress', { params: { year } }))
+  },
+
   async getEnvironmentalSummary() {
     return extractData(await api.get('/dashboard/environmental-summary'))
   },
