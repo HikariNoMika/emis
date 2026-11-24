@@ -58,6 +58,42 @@ export default function SystemSettingsPage() {
 
       {notice && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">{notice}</div>}
 
+      {/* Dedicated toggle for the first-login MFA feature (testing phase). */}
+      {!query.isLoading && !query.isError && (
+        <div className="card mb-6 flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Enforce MFA on first login</h2>
+            <p className="mt-1 max-w-xl text-xs text-slate-500">
+              When ON, a user's first password change automatically sets up MFA, emails the
+              authenticator secret, and requires a 6-digit code on subsequent logins.
+              Leave OFF while testing.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={Boolean(query.data?.enforce_mfa_on_first_login?.enabled)}
+            onClick={() => {
+              const current = Boolean(query.data?.enforce_mfa_on_first_login?.enabled)
+              mutation.mutate({
+                key: 'enforce_mfa_on_first_login',
+                value: { enabled: !current },
+              })
+            }}
+            disabled={mutation.isPending}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+              query.data?.enforce_mfa_on_first_login?.enabled ? 'bg-brand-600' : 'bg-slate-300'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                query.data?.enforce_mfa_on_first_login?.enabled ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      )}
+
       {query.isLoading ? <LoadingSpinner /> : query.isError ? (
         <ErrorState message={extractError(query.error)} onRetry={query.refetch} />
       ) : (
