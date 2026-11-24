@@ -27,6 +27,7 @@ import { extractError } from '../services/api'
 import importService from '../services/importService'
 import measurementService from '../services/measurementService'
 import stationService from '../services/stationService'
+import reportService from '../services/reportService'
 import { stationTypeLabel } from '../utils/stations'
 
 function dateInputToIso(value, endOfDay = false) {
@@ -73,6 +74,7 @@ export default function AwsStationPage({
   const [uploadOpen, setUploadOpen] = useState(false)
   const [uploadFile, setUploadFile] = useState(null)
   const [uploadNotice, setUploadNotice] = useState('')
+  const [reportNotice, setReportNotice] = useState('')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const queryClient = useQueryClient()
@@ -135,6 +137,23 @@ export default function AwsStationPage({
       setUploadNotice(
         `Import complete: ${summary.imported_rows ?? 0} new readings, ` +
         `${summary.duplicate_rows ?? 0} duplicates skipped.`,
+      )
+    },
+  })
+
+  const reportMutation = useMutation({
+    mutationFn: () => reportService.generate({
+      report_type: 'station_full',
+      station_id: Number(stationId),
+      date_from: dateFrom,
+      ...(dateTo ? { date_to: dateTo } : {}),
+      measurement_type_ids: types.map((t) => t.id),
+      file_format: 'pdf',
+      title: `${brand} — ${station?.name || 'Station'} report`,
+    }),
+    onSuccess: (report) => {
+      setReportNotice(
+        `Report ${report.report_number} generated. Download it from the Reports page.`,
       )
     },
   })
@@ -310,6 +329,10 @@ export default function AwsStationPage({
         description={`${stationTypeLabel(station.station_type)} · ${description}`}
         actions={
           <>
+            <button type="button" className="btn-secondary" disabled={reportMutation.isPending}
+              onClick={() => { setReportNotice(''); reportMutation.mutate() }}>
+              {reportMutation.isPending ? 'Generating…' : 'Generate report'}
+            </button>
             <button type="button" className="btn-secondary" onClick={() => setEditOpen(true)}>
               Edit station
             </button>
@@ -347,6 +370,14 @@ export default function AwsStationPage({
         <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
           {uploadNotice}
         </p>
+      )}
+      {reportNotice && (
+        <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          {reportNotice}
+        </p>
+      )}
+      {reportMutation.isError && (
+        <p className="mb-4 text-sm text-red-600">{extractError(reportMutation.error)}</p>
       )}
 
       <section className="card mb-4 p-4">
@@ -500,7 +531,7 @@ export default function AwsStationPage({
             <label className="label" htmlFor="aws-days">Date range</label>
             <select
               id="aws-days"
-              className="input"
+              className="input-compact"
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}
             >

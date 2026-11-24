@@ -80,7 +80,7 @@ export default function AnalyticsPage() {
               })),
           })).filter((group) => group.options.length > 0)}
         />
-        <select className="input sm:w-40" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+        <select className="input-compact" value={days} onChange={(event) => setDays(Number(event.target.value))}>
           <option value={1}>Last 24 hours</option>
           <option value={7}>Last 7 days</option>
           <option value={30}>Last 30 days</option>

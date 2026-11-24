@@ -95,7 +95,7 @@ export default function ComparisonPage() {
               <option key={type.id} value={type.id}>{type.name} ({type.unit})</option>
             ))}
           </select>
-          <select className="input sm:w-40" value={days} title="Quick range"
+          <select className="input-compact" value={days} title="Quick range"
             onChange={(event) => { setDays(Number(event.target.value)); setRange({ from: '', to: '' }) }}>
             <option value={1}>Last 24 hours</option>
             <option value={7}>Last 7 days</option>

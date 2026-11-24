@@ -391,7 +391,7 @@ export default function DashboardPage() {
                     }]}
                   />
                 </div>
-                <select className="input py-1 text-xs" value={days} onChange={(event) => setDays(Number(event.target.value))}>
+                <select className="input-compact" value={days} onChange={(event) => setDays(Number(event.target.value))}>
                   <option value={1}>Last 24 hours</option>
                   <option value={7}>Last 7 days</option>
                   <option value={30}>Last 30 days</option>

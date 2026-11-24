@@ -349,7 +349,7 @@ export default function DataManagementPage() {
                           </span>
                         )}
                       </span>
-                      <select className="input py-1 text-xs"
+                      <select className="input-compact"
                         value={code}
                         onChange={(event) => updateMappingField('measurement_columns', {
                           ...mapping.measurement_columns, [header]: event.target.value,
@@ -371,7 +371,7 @@ export default function DataManagementPage() {
                     {portValues.map((port) => (
                       <div key={String(port)} className="flex items-center gap-2 text-sm">
                         <span className="w-16 font-medium">Port {String(port)}</span>
-                        <select className="input py-1 text-xs"
+                        <select className="input-compact"
                           value={(mapping.sensor_mapping || {})[String(port)] || ''}
                           onChange={(event) => updateMappingField('sensor_mapping', {
                             ...(mapping.sensor_mapping || {}),

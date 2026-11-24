@@ -23,6 +23,8 @@ const REPORT_TYPES = [
   ['multi_station_comparison', 'Multi-station comparison report'],
   ['import_summary', 'Data import summary'],
   ['maintenance_calibration', 'Maintenance and calibration report'],
+  ['station_full', 'Station comprehensive report (trends + gaps)'],
+  ['station_comparison', '3-station comparison (trends + table + lows/highs)'],
 ]
 
 export default function ReportsPage() {
@@ -34,6 +36,7 @@ export default function ReportsPage() {
   const [dateTo, setDateTo] = useState('')
   const [format, setFormat] = useState('pdf')
   const [selectedTypes, setSelectedTypes] = useState([])
+  const [selectedStations, setSelectedStations] = useState([])
   const [notice, setNotice] = useState('')
 
   const query = useReports({ page, per_page: 15 })
@@ -58,6 +61,7 @@ export default function ReportsPage() {
       date_to: dateTo || null,
       file_format: format,
       measurement_type_ids: selectedTypes.map(Number),
+      station_ids: selectedStations.map(Number),
     })
   }
 
@@ -137,6 +141,31 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
+
+          {reportType === 'station_comparison' && (
+            <div>
+              <p className="label">Stations to compare (up to 3)</p>
+              <div className="flex flex-wrap gap-2">
+                {(stationsQuery.data?.data || []).map((station) => (
+                  <label key={station.id} className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedStations.includes(station.id)}
+                      onChange={() => setSelectedStations((current) =>
+                        current.includes(station.id)
+                          ? current.filter((id) => id !== station.id)
+                          : current.length < 3 ? [...current, station.id] : current,
+                      )}
+                    />
+                    {station.name}
+                  </label>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Leave "Station" above as All stations when comparing; selects here decide which sites appear.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end">
             <button type="submit" className="btn-primary" disabled={mutation.isPending}>
