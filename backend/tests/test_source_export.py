@@ -63,3 +63,69 @@ def test_source_export_merges_batches_and_fills_gaps(app):
     assert all(row[temp_index] == 0 for row in gap_rows)
     real_rows = [row for row in rows[1:] if row[0] not in ("2026-01-01T10:15:00", "2026-01-01T10:30:00")]
     assert sorted(row[temp_index] for row in real_rows) == [20, 21, 22]
+
+
+def test_source_export_csv_headers_fill_date_time_in_gaps(app):
+    """AWLS/CSV sources have Date + Time columns; gap rows must fill those too."""
+    station = Station(
+        station_code="EXPORT-002", name="AWLS", timezone="Asia/Manila",
+        measurement_interval_seconds=900,
+    )
+    db.session.add(station)
+    db.session.commit()
+
+    batch = ImportBatch(
+        batch_number="EXP-CSV", station_id=station.id, original_filename="awls.csv",
+        stored_path="/tmp/awls.csv", file_checksum="z", file_size_bytes=10,
+        status="COMPLETED",
+    )
+    db.session.add(batch)
+    db.session.commit()
+
+    db.session.add_all([
+        RawImportRecord(
+            import_batch_id=batch.id, row_number=0, is_processed=True,
+            raw_payload={
+                "Timestamps": "2026-01-01T09:45:00",
+                "Date(Asia/Manila)": "01/01/2026",
+                "Time(Asia/Manila)": "09:45:00 AM",
+                "WaterLevel(mtrs)": 0.82,
+            },
+        ),
+        RawImportRecord(
+            import_batch_id=batch.id, row_number=1, is_processed=True,
+            raw_payload={
+                "Timestamps": "2026-01-01T10:00:00",
+                "Date(Asia/Manila)": "01/01/2026",
+                "Time(Asia/Manila)": "10:00:00 AM",
+                "WaterLevel(mtrs)": 0.81,
+            },
+        ),
+        RawImportRecord(
+            import_batch_id=batch.id, row_number=2, is_processed=True,
+            raw_payload={
+                "Timestamps": "2026-01-01T10:30:00",
+                "Date(Asia/Manila)": "01/01/2026",
+                "Time(Asia/Manila)": "10:30:00 AM",
+                "WaterLevel(mtrs)": 0.80,
+            },
+        ),
+    ])
+    db.session.commit()
+
+    content = export_source_xlsx(station.id)
+    workbook = load_workbook(io.BytesIO(content))
+    rows = list(workbook["source"].values)
+    header = rows[0]
+    assert header[0] == "Timestamps"
+
+    # Gap at 10:15 (Asia/Manila = UTC+8 -> 18:15 local).
+    gap = [row for row in rows[1:] if row[0] == "2026-01-01T10:15:00"]
+    assert len(gap) == 1
+    gap = gap[0]
+    date_index = header.index("Date(Asia/Manila)")
+    time_index = header.index("Time(Asia/Manila)")
+    level_index = header.index("WaterLevel(mtrs)")
+    assert gap[date_index] == "01/01/2026"
+    assert gap[time_index] == "10:15:00 AM"
+    assert gap[level_index] == 0
