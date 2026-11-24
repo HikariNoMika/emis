@@ -53,6 +53,15 @@ export default function DataManagementPage() {
     },
   })
 
+  const resetMutation = useMutation({
+    mutationFn: (id) => importService.reset(id),
+    onSuccess: () => {
+      invalidateAll()
+      queryClient.invalidateQueries({ queryKey: ['imports', selectedBatch.id, 'preview'] })
+      setNotice('Import reset to preview. You can now save the mapping and process again.')
+    },
+  })
+
   const mappingMutation = useMutation({
     mutationFn: ({ id, payload }) => importService.updateMapping(id, payload),
     onSuccess: () => {
@@ -209,11 +218,19 @@ export default function DataManagementPage() {
           footer={
             <>
               <button type="button" className="btn-secondary" onClick={() => setSelectedBatch(null)}>Cancel</button>
-              <button type="button" className="btn-secondary" disabled={!draftMapping || mappingMutation.isPending}
+              {selectedBatch.status === 'PROCESSING' && (
+                <button type="button" className="btn-secondary" disabled={resetMutation.isPending}
+                  onClick={() => resetMutation.mutate(selectedBatch.id)}>
+                  {resetMutation.isPending ? 'Resetting…' : 'Reset stuck import'}
+                </button>
+              )}
+              <button type="button" className="btn-secondary"
+                disabled={selectedBatch.status === 'PROCESSING' || !draftMapping || mappingMutation.isPending}
                 onClick={() => mappingMutation.mutate({ id: selectedBatch.id, payload: mapping })}>
                 Save mapping
               </button>
-              <button type="button" className="btn-primary" disabled={selectedBatch.status === 'COMPLETED' || saveAndProcessBusy()}
+              <button type="button" className="btn-primary"
+                disabled={selectedBatch.status === 'COMPLETED' || selectedBatch.status === 'PROCESSING' || saveAndProcessBusy()}
                 onClick={saveAndProcess}>
                 {processMutation.isPending ? 'Processing…' : 'Save & process'}
               </button>

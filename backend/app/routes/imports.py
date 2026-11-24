@@ -83,6 +83,15 @@ def update_mapping(
     return ok(data={"column_mapping": batch.column_mapping}, message="Mapping saved.")
 
 
+@imports_bp.post("/{batch_id}/reset")
+def reset_import(batch_id: int, user=Depends(get_current_user)):
+    """Recover an import that was interrupted mid-processing."""
+    return ok(
+        data={"column_mapping": import_service.reset_batch(_get_batch(batch_id), user.id).column_mapping},
+        message="Import reset to preview. You can save the mapping and process again.",
+    )
+
+
 @imports_bp.post("/{batch_id}/process")
 def process_import(batch_id: int, user=Depends(get_current_user)):
     result = import_service.process_batch(_get_batch(batch_id), user.id)

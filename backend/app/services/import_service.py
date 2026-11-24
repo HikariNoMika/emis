@@ -246,6 +246,30 @@ def get_batch(batch_id):
     return db.session.get(ImportBatch, batch_id)
 
 
+def reset_batch(batch, user_id):
+    """Return a stuck (interrupted) batch to PREVIEWED so it can be retried.
+
+    COMPLETED batches are never reset — that would make duplicate detection
+    ambiguous. A batch that was mid-import when the server restarted can be
+    safely retried: existing readings are skipped, never overwritten.
+    """
+    if batch.status == "COMPLETED":
+        raise ConflictError("Completed imports cannot be reset.")
+    batch.status = "PREVIEWED"
+    batch.started_at = None
+    batch.completed_at = None
+    log_action(
+        "IMPORT_RESET",
+        "imports",
+        record_identifier=batch.batch_number,
+        new_values={"status": "PREVIEWED"},
+        user_id=user_id,
+        commit=False,
+    )
+    db.session.commit()
+    return batch
+
+
 def update_mapping(batch, payload, user_id):
     """Validate and save administrator edits to the proposed mapping."""
     if batch.status in {"COMPLETED", "PROCESSING"}:

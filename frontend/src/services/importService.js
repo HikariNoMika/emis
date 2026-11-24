@@ -30,6 +30,10 @@ export const importService = {
     return extractData(await api.post(`/imports/${id}/process`))
   },
 
+  async reset(id) {
+    return extractData(await api.post(`/imports/${id}/reset`))
+  },
+
   async errors(id) {
     return extractData(await api.get(`/imports/${id}/errors`))
   },
