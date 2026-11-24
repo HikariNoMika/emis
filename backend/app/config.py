@@ -71,6 +71,14 @@ class Settings:
             os.getenv("DEFAULT_MEASUREMENT_INTERVAL_SECONDS", "900")
         )
 
+        # SMTP for security notifications (MFA setup codes, etc.).
+        self.SMTP_HOST = os.getenv("SMTP_HOST", "")
+        self.SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+        self.SMTP_USER = os.getenv("SMTP_USER", "")
+        self.SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+        self.SMTP_USE_TLS = os.getenv("SMTP_USE_TLS", "true").lower() in ("1", "true", "yes")
+        self.SMTP_FROM = os.getenv("SMTP_FROM", "EMIS <no-reply@emis.local>")
+
         self.REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
         self.CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", self.REDIS_URL)
         self.CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", self.REDIS_URL)

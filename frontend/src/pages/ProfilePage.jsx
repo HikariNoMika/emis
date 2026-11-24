@@ -37,13 +37,20 @@ export default function ProfilePage() {
     event.preventDefault()
     setError('')
     try {
-      await authService.changePassword(
+      const result = await authService.changePassword(
         passwords.current_password,
         passwords.new_password,
         passwords.confirm_password,
       )
       setPasswords({ current_password: '', new_password: '', confirm_password: '' })
-      setNotice('Password changed.')
+      if (result?.mfa_enrolment) {
+        setMfaSetup(result.mfa_enrolment)
+        setRecoveryCodes(result.mfa_enrolment.recovery_codes || [])
+        await refreshProfile()
+        setNotice('Password changed. Set up your authenticator now.')
+      } else {
+        setNotice('Password changed.')
+      }
     } catch (err) {
       setError(extractError(err))
     }
@@ -161,8 +168,15 @@ export default function ProfilePage() {
 
         {mfaSetup && (
           <form onSubmit={enableMfa} className="space-y-3 rounded border border-slate-200 p-3">
+            {mfaSetup.qr_data_uri && (
+              <div className="flex justify-center rounded border border-slate-200 bg-white p-3">
+                <img src={mfaSetup.qr_data_uri} alt="Authenticator QR code" className="h-40 w-40" />
+              </div>
+            )}
             <p className="text-xs text-slate-600">
-              Add this secret to your authenticator app (manual entry), then enter the 6-digit code:
+              Scan the QR code with your authenticator app, or enter the secret manually.
+              {mfaSetup.email_sent && ' The secret was also emailed to you.'}
+              Then enter the 6-digit code:
             </p>
             <code className="block break-all rounded bg-slate-50 p-2 text-xs">{mfaSetup.secret}</code>
             <input

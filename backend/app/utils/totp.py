@@ -59,3 +59,16 @@ def provisioning_uri(secret, account_name, issuer="EMIS"):
         "period": 30,
     })
     return f"otpauth://totp/{label}?{params}"
+
+
+def qr_data_uri(uri):
+    """Return a PNG data URI for the otpauth URI, scannable by authenticator apps."""
+    import io
+    import base64
+    import qrcode
+
+    image = qrcode.make(uri)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"

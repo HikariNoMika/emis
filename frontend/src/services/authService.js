@@ -50,7 +50,7 @@ export const authService = {
       new_password: newPassword,
       confirm_password: confirmPassword,
     })
-    return response.data
+    return extractData(response)
   },
 }
 

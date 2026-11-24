@@ -76,6 +76,17 @@ def seed_defaults():
                 description="Configurable report header. No official logo or signatory is assumed.",
             )
         )
+    from app.models import SystemSetting
+
+    if SystemSetting.query.filter_by(key="enforce_mfa_on_first_login").first() is None:
+        db.session.add(SystemSetting(
+            key="enforce_mfa_on_first_login",
+            value={"enabled": False},
+            description=(
+                "Testing toggle: when a user changes a forced first-login password, "
+                "automatically enrol MFA and email the authenticator secret."
+            ),
+        ))
     if AccomplishmentSetting.query.filter_by(key="example_weights_note").first() is None:
         db.session.add(
             AccomplishmentSetting(

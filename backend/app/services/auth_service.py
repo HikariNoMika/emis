@@ -53,18 +53,50 @@ def authenticate(identifier, password):
     }
 
 
-def mfa_setup(user):
-    """Generate a new TOTP secret and otpauth URI. Not active until enabled."""
+def mfa_setup(user, send_mail=True):
+    """Generate a TOTP secret, QR code and otpauth URI, and email the secret.
+
+    Not active until a valid code is submitted via mfa_enable.
+    """
     from app.utils import totp
+    from app.utils.email import send_email
 
     secret = totp.generate_secret()
-    # Store as pending on the user; enabling requires a valid code from it.
+    uri = totp.provisioning_uri(secret, user.username)
     user.mfa_secret = secret
     db.session.commit()
+
+    emailed = False
+    if send_mail:
+        emailed = send_email(
+            user.email,
+            "EMIS - Authenticator setup code",
+            (
+                f"Hello {user.full_name},\n\n"
+                "An authenticator app was set up for your EMIS account.\n"
+                "Scan the QR code shown on screen, or enter this secret manually:\n\n"
+                f"  {secret}\n\n"
+                "If you did not request this, contact your administrator immediately.\n"
+            ),
+        )
     return {
         "secret": secret,
-        "otpauth_uri": totp.provisioning_uri(secret, user.username),
+        "otpauth_uri": uri,
+        "qr_data_uri": totp.qr_data_uri(uri),
+        "email_sent": emailed,
     }
+
+
+def _activate_mfa(user):
+    """Activate MFA with the pending secret and issue one-time recovery codes."""
+    from app.utils.security import hash_password
+
+    user.mfa_enabled = True
+    codes = [f"{os.urandom(4).hex()}" for _ in range(8)]
+    user.mfa_recovery_codes = [hash_password(code) for code in codes]
+    log_action("MFA_ENABLED", "auth", record_identifier=user.id, user_id=user.id, commit=False)
+    db.session.commit()
+    return codes
 
 
 def mfa_enable(user, code):
@@ -75,15 +107,7 @@ def mfa_enable(user, code):
         raise ValidationAppError("Start MFA setup first.")
     if not totp.verify_code(user.mfa_secret, code):
         raise AuthenticationError("Invalid authenticator code.")
-    user.mfa_enabled = True
-    # 8 recovery codes, shown once, stored as hashes and single-use.
-    from app.utils.security import hash_password
-
-    codes = [f"{os.urandom(4).hex()}" for _ in range(8)]
-    user.mfa_recovery_codes = [hash_password(code) for code in codes]
-    log_action("MFA_ENABLED", "auth", record_identifier=user.id, user_id=user.id, commit=False)
-    db.session.commit()
-    return {"recovery_codes": codes}
+    return {"recovery_codes": _activate_mfa(user)}
 
 
 def mfa_disable(user, password, code):
@@ -152,6 +176,7 @@ def logout(jti, expires_at_timestamp, user_id):
 def change_password(user, current_password, new_password):
     if not verify_password(user.password_hash, current_password):
         raise AuthenticationError("Current password is incorrect.")
+    was_forced = user.must_change_password
     user.password_hash = hash_password(new_password)
     user.must_change_password = False
     log_action(
@@ -159,7 +184,29 @@ def change_password(user, current_password, new_password):
         user_id=user.id, commit=False,
     )
     db.session.commit()
-    return user
+    # On a forced first-login change, optionally auto-enrol MFA and email the
+    # secret. Controlled by an admin-editable setting (off by default in testing).
+    if was_forced and not user.mfa_enabled and _enforce_first_login_mfa():
+        setup = mfa_setup(user, send_mail=True)
+        codes = _activate_mfa(user)
+        return {
+            "password_changed": True,
+            "mfa_enrolment": {**setup, "recovery_codes": codes},
+        }
+    return {"password_changed": True}
+
+
+def _enforce_first_login_mfa():
+    """Read the admin toggle; safe default False while the feature is in testing."""
+    from app.models import SystemSetting
+
+    setting = SystemSetting.query.filter_by(key="enforce_mfa_on_first_login").first()
+    if setting is None:
+        return False
+    value = setting.value
+    if isinstance(value, dict):
+        value = value.get("enabled", False)
+    return str(value).lower() in ("true", "1", "yes") if not isinstance(value, bool) else value
 
 
 def profile_dict(user):

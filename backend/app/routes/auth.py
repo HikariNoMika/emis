@@ -96,8 +96,14 @@ def refresh(claims: dict = Depends(get_refresh_claims)):
 
 @auth_bp.post("/change-password")
 def change_password(payload: ChangePasswordSchema, user=Depends(get_current_user)):
-    auth_service.change_password(user, payload.current_password, payload.new_password)
-    return ok(message="Password changed successfully.")
+    result = auth_service.change_password(
+        user, payload.current_password, payload.new_password
+    )
+    data = result.get("mfa_enrolment") if isinstance(result, dict) else None
+    return ok(
+        data=data,
+        message="Password changed successfully." + (" MFA setup required." if data else ""),
+    )
 
 
 @auth_bp.put("/profile")

@@ -24,6 +24,9 @@ celery==5.3.6
 kombu==5.3.5
 redis==5.0.1
 
+# QR codes for TOTP authenticator enrolment
+qrcode==8.2
+
 # Reporting
 reportlab==4.1.0
 
