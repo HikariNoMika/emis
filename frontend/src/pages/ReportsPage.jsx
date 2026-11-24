@@ -105,7 +105,9 @@ export default function ReportsPage() {
                 <select className="input" value={stationId} onChange={(event) => setStationId(event.target.value)}>
                   <option value="">All stations</option>
                   {(stationsQuery.data?.data || []).map((station) => (
-                    <option key={station.id} value={station.id}>{station.name}</option>
+                    <option key={station.id} value={station.id}>
+                      {station.name} ({station.station_code})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -159,7 +161,7 @@ export default function ReportsPage() {
                           : current.length < 3 ? [...current, station.id] : current,
                       )}
                     />
-                    {station.name}
+                    {station.name} <span className="text-slate-400">({station.station_code})</span>
                   </label>
                 ))}
               </div>

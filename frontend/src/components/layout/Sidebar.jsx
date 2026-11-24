@@ -32,13 +32,13 @@ const NAV_ITEMS = [
   { label: 'Stations', to: '/stations', icon: MapPin, available: true },
   { label: 'Sensor Management', to: '/sensors', icon: Radio, available: true },
   {
-    label: 'Automated Water Level Station (AWLS)',
+    label: 'Water Level Station (AWLS)',
     icon: Waves,
     available: true,
     dropdown: 'awls',
   },
   {
-    label: 'Automated Weather Station (AWS)',
+    label: 'Weather Station (AWS)',
     icon: CloudSun,
     available: true,
     dropdown: 'aws',
@@ -138,7 +138,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                   <Icon size={18} className="shrink-0" />
                   {!collapsed && (
                     <>
-                      <span className="leading-tight">{item.label}</span>
+                      <span className="truncate">{item.label}</span>
                       <ChevronDown
                         size={14}
                         className={`ml-auto shrink-0 transition-transform ${
