@@ -8,7 +8,7 @@ from app.schemas import ClearDataSchema, StationQuerySchema, StationSchema
 from app.services import station_service
 from app.services.exceptions import NotFoundError
 from app.utils.responses import ok, paginated
-from app.utils.security import get_current_user
+from app.utils.security import get_current_user, require_password_changed
 from app.utils.serializers import station_to_dict
 
 stations_bp = APIRouter()
@@ -71,7 +71,7 @@ def archive_station(station_id: int, user=Depends(get_current_user)):
 
 
 @stations_bp.delete("/{station_id}/data")
-def clear_station_data(station_id: int, payload: ClearDataSchema, user=Depends(get_current_user)):
+def clear_station_data(station_id: int, payload: ClearDataSchema, user=Depends(require_password_changed)):
     """Permanently delete all readings and imports for one station.
 
     The station and its sensors are kept. Requires the administrator's current

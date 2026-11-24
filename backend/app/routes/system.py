@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from app.schemas import AuditLogFilterSchema, SystemSettingSchema
 from app.services import system_service
 from app.utils.responses import ok, paginated
-from app.utils.security import get_current_user
+from app.utils.security import get_current_user, require_admin
 from app.utils.time import parse_iso
 
 system_bp = APIRouter()
@@ -22,12 +22,12 @@ def health():
 
 
 @system_bp.get("/settings")
-def get_settings(user=Depends(get_current_user)):
+def get_settings(user=Depends(require_admin)):
     return ok(data=system_service.list_settings())
 
 
 @system_bp.put("/settings")
-def put_setting(payload: SystemSettingSchema, user=Depends(get_current_user)):
+def put_setting(payload: SystemSettingSchema, user=Depends(require_admin)):
     setting = system_service.update_setting(
         key=payload.key,
         value=payload.value,

@@ -179,12 +179,26 @@ class Database:
         if not inspector.has_table("stations"):
             return
         existing = {column["name"] for column in inspector.get_columns("stations")}
-        if "station_type" not in existing:
-            with self.engine.begin() as connection:
+        with self.engine.begin() as connection:
+            if "station_type" not in existing:
                 connection.execute(sa_text(
                     "ALTER TABLE stations ADD COLUMN station_type "
                     "VARCHAR(30) NOT NULL DEFAULT 'AWS'"
                 ))
+            if inspector.has_table("users"):
+                user_cols = {c["name"] for c in inspector.get_columns("users")}
+                if "mfa_secret" not in user_cols:
+                    connection.execute(sa_text(
+                        "ALTER TABLE users ADD COLUMN mfa_secret VARCHAR(64)"
+                    ))
+                if "mfa_enabled" not in user_cols:
+                    connection.execute(sa_text(
+                        "ALTER TABLE users ADD COLUMN mfa_enabled BOOLEAN NOT NULL DEFAULT 0"
+                    ))
+                if "mfa_recovery_codes" not in user_cols:
+                    connection.execute(sa_text(
+                        "ALTER TABLE users ADD COLUMN mfa_recovery_codes JSON"
+                    ))
 
     def create_all(self):
         Base.metadata.create_all(self.engine)

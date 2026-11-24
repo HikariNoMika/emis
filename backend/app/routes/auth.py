@@ -4,7 +4,14 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.schemas import ChangePasswordSchema, LoginSchema, UserProfileUpdateSchema
+from app.schemas import (
+    ChangePasswordSchema,
+    LoginSchema,
+    MFACodeSchema,
+    MFADisableSchema,
+    MFAVerifySchema,
+    UserProfileUpdateSchema,
+)
 from app.services import auth_service, user_management_service
 from app.utils.responses import ok
 from app.utils.security import (
@@ -38,6 +45,32 @@ def login(payload: LoginSchema):
     _check_login_rate(payload.identifier)
     data = auth_service.authenticate(payload.identifier, payload.password)
     return ok(data=data, message="Login successful.")
+
+
+# ---- Multi-factor authentication --------------------------------------------
+@auth_bp.post("/mfa/setup")
+def mfa_setup(user=Depends(get_current_user)):
+    """Begin enrolment: returns a secret + otpauth URI (not active yet)."""
+    return ok(data=auth_service.mfa_setup(user), message="Scan the code with your authenticator app.")
+
+
+@auth_bp.post("/mfa/enable")
+def mfa_enable(payload: MFACodeSchema, user=Depends(get_current_user)):
+    """Activate MFA with a code from the new secret; returns recovery codes."""
+    return ok(data=auth_service.mfa_enable(user, payload.code), message="MFA enabled.")
+
+
+@auth_bp.post("/mfa/disable")
+def mfa_disable(payload: MFADisableSchema, user=Depends(get_current_user)):
+    """Turn off MFA (requires password and a current code)."""
+    auth_service.mfa_disable(user, payload.password, payload.code)
+    return ok(message="MFA disabled.")
+
+
+@auth_bp.post("/mfa/verify")
+def mfa_verify(payload: MFAVerifySchema):
+    """Complete a login that returned mfa_required."""
+    return ok(data=auth_service.mfa_verify(payload.mfa_token, payload.code), message="Login successful.")
 
 
 @auth_bp.post("/logout")

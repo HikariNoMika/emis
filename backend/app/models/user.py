@@ -25,6 +25,12 @@ class User(TimestampMixin, db.Model):
     must_change_password = db.Column(db.Boolean, nullable=False, default=False)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    # Multi-factor authentication (TOTP). Secret is only set after enrolment;
+    # recovery codes are stored hashed and single-use.
+    mfa_secret = db.Column(db.String(64), nullable=True)
+    mfa_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    mfa_recovery_codes = db.Column(db.JSON, nullable=True, default=list)
+
     # Relationships (convenience only; foreign keys live on the child tables).
     login_history = db.relationship(
         "LoginHistory", back_populates="user", cascade="all, delete-orphan"

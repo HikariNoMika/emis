@@ -97,7 +97,7 @@ def create_app(environment=None):
         allow_headers=["*"],
     )
 
-    # Store request metadata for audit logging.
+    # Store request metadata for audit logging + apply security headers.
     @app.middleware("http")
     async def request_context(request: Request, call_next):
         from app.utils.request_context import set_request_info
@@ -106,7 +106,24 @@ def create_app(environment=None):
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
         )
-        return await call_next(request)
+        response = await call_next(request)
+        # Defensive defaults recommended for admin panels handling sensitive data.
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'",
+        )
+        response.headers.setdefault(
+            "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+        )
+        if settings.ENVIRONMENT == "production":
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
+        return response
 
     # ---- Error handlers ------------------------------------------------------
     @app.exception_handler(AppError)

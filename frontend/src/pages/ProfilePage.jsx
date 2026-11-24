@@ -16,6 +16,10 @@ export default function ProfilePage() {
   })
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
+  const [mfaSetup, setMfaSetup] = useState(null)
+  const [mfaCode, setMfaCode] = useState('')
+  const [recoveryCodes, setRecoveryCodes] = useState([])
+  const [disableCode, setDisableCode] = useState('')
 
   const saveProfile = async (event) => {
     event.preventDefault()
@@ -40,6 +44,45 @@ export default function ProfilePage() {
       )
       setPasswords({ current_password: '', new_password: '', confirm_password: '' })
       setNotice('Password changed.')
+    } catch (err) {
+      setError(extractError(err))
+    }
+  }
+
+  const startMfa = async () => {
+    setError('')
+    try {
+      setMfaSetup(await authService.mfaSetup())
+      setMfaCode('')
+    } catch (err) {
+      setError(extractError(err))
+    }
+  }
+
+  const enableMfa = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      const result = await authService.mfaEnable(mfaCode)
+      setRecoveryCodes(result.recovery_codes || [])
+      setMfaSetup(null)
+      setMfaCode('')
+      await refreshProfile()
+      setNotice('MFA enabled. Save your recovery codes now.')
+    } catch (err) {
+      setError(extractError(err))
+    }
+  }
+
+  const disableMfa = async (event) => {
+    event.preventDefault()
+    setError('')
+    try {
+      await authService.mfaDisable(passwords.current_password, disableCode)
+      setDisableCode('')
+      setRecoveryCodes([])
+      await refreshProfile()
+      setNotice('MFA disabled.')
     } catch (err) {
       setError(extractError(err))
     }
@@ -94,6 +137,77 @@ export default function ProfilePage() {
           <button className="btn-primary" type="submit">Change password</button>
         </div>
       </form>
+
+      <section className="card mt-6 space-y-4 p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Two-factor authentication</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              {user?.mfa_enabled
+                ? 'MFA is active on this account.'
+                : 'Add an authenticator app for an extra layer of security.'}
+            </p>
+          </div>
+          <span className={`badge ${user?.mfa_enabled ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
+            {user?.mfa_enabled ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+
+        {!user?.mfa_enabled && !mfaSetup && (
+          <button type="button" className="btn-secondary" onClick={startMfa}>
+            Set up authenticator
+          </button>
+        )}
+
+        {mfaSetup && (
+          <form onSubmit={enableMfa} className="space-y-3 rounded border border-slate-200 p-3">
+            <p className="text-xs text-slate-600">
+              Add this secret to your authenticator app (manual entry), then enter the 6-digit code:
+            </p>
+            <code className="block break-all rounded bg-slate-50 p-2 text-xs">{mfaSetup.secret}</code>
+            <input
+              className="input text-center tracking-widest"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              value={mfaCode}
+              onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+            />
+            <div className="flex gap-2">
+              <button className="btn-primary" type="submit" disabled={mfaCode.length !== 6}>Enable MFA</button>
+              <button type="button" className="btn-secondary" onClick={() => setMfaSetup(null)}>Cancel</button>
+            </div>
+          </form>
+        )}
+
+        {recoveryCodes.length > 0 && (
+          <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-medium">Save these recovery codes — shown once:</p>
+            <div className="mt-2 grid grid-cols-2 gap-1 font-mono text-xs">
+              {recoveryCodes.map((code) => <span key={code}>{code}</span>)}
+            </div>
+            <button type="button" className="mt-3 text-xs underline" onClick={() => setRecoveryCodes([])}>
+              I have saved them
+            </button>
+          </div>
+        )}
+
+        {user?.mfa_enabled && (
+          <form onSubmit={disableMfa} className="flex flex-wrap items-end gap-2 border-t border-slate-200 pt-4">
+            <div className="flex-1">
+              <label className="label">Current password</label>
+              <input className="input" type="password" value={passwords.current_password}
+                onChange={(e) => setPasswords({ ...passwords, current_password: e.target.value })} />
+            </div>
+            <div className="flex-1">
+              <label className="label">Authenticator code</label>
+              <input className="input" inputMode="numeric" maxLength={6} value={disableCode}
+                onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, ''))} />
+            </div>
+            <button className="btn-secondary" type="submit" disabled={disableCode.length !== 6}>Disable MFA</button>
+          </form>
+        )}
+      </section>
     </div>
   )
 }

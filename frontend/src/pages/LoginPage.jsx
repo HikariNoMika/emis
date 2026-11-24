@@ -13,10 +13,12 @@ const loginSchema = z.object({
 })
 
 export default function LoginPage() {
-  const { login, isAuthenticated, isLoading } = useAuth()
+  const { login, verifyMfa, isAuthenticated, isLoading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [serverError, setServerError] = useState('')
+  const [mfaToken, setMfaToken] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
 
   const {
     register,
@@ -35,7 +37,22 @@ export default function LoginPage() {
   const onSubmit = async (values) => {
     setServerError('')
     try {
-      await login(values.identifier, values.password)
+      const result = await login(values.identifier, values.password)
+      if (result?.mfaRequired) {
+        setMfaToken(result.mfaToken)
+        return
+      }
+      navigate(location.state?.from || '/', { replace: true })
+    } catch (error) {
+      setServerError(extractError(error))
+    }
+  }
+
+  const onVerifyMfa = async (event) => {
+    event.preventDefault()
+    setServerError('')
+    try {
+      await verifyMfa(mfaToken, mfaCode)
       navigate(location.state?.from || '/', { replace: true })
     } catch (error) {
       setServerError(extractError(error))
@@ -55,6 +72,43 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-slate-600">Administrator sign in</p>
         </div>
 
+        {mfaToken && (
+          <form onSubmit={onVerifyMfa} className="card space-y-4 p-6">
+            <div className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
+              Enter the 6-digit code from your authenticator app.
+            </div>
+            {serverError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {serverError}
+              </div>
+            )}
+            <div>
+              <label className="label" htmlFor="mfa-code">Authenticator code</label>
+              <input
+                id="mfa-code"
+                className="input text-center text-lg tracking-widest"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={mfaCode}
+                onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, ''))}
+                autoFocus
+              />
+            </div>
+            <button type="submit" className="btn-primary w-full" disabled={mfaCode.length !== 6}>
+              Verify and sign in
+            </button>
+            <button
+              type="button"
+              className="w-full text-xs text-slate-500 hover:underline"
+              onClick={() => { setMfaToken(''); setMfaCode(''); setServerError('') }}
+            >
+              Back to sign in
+            </button>
+          </form>
+        )}
+
+        {!mfaToken && (
         <form onSubmit={handleSubmit(onSubmit)} className="card space-y-4 p-6">
           {serverError && (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -101,6 +155,7 @@ export default function LoginPage() {
             Access is restricted to authorized administrators.
           </p>
         </form>
+        )}
       </div>
     </div>
   )

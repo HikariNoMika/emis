@@ -1,5 +1,9 @@
 """Router registration for the /api/v1 FastAPI application."""
 
+from fastapi import Depends
+
+from app.utils.security import require_admin
+
 from .alerts import alerts_bp
 from .analytics import analytics_bp
 from .auth import auth_bp
@@ -20,15 +24,18 @@ from .users import users_bp
 
 
 def register_routers(app, prefix):
+    admin = [Depends(require_admin)]
     app.include_router(auth_bp, prefix=f"{prefix}/auth", tags=["auth"])
     app.include_router(alerts_bp, prefix=f"{prefix}/alerts", tags=["alerts"])
     app.include_router(analytics_bp, prefix=f"{prefix}/analytics", tags=["analytics"])
-    app.include_router(data_quality_bp, prefix=f"{prefix}/data-quality", tags=["data-quality"])
-    app.include_router(health_bp, prefix=f"{prefix}/health", tags=["health"])
+    app.include_router(data_quality_bp, prefix=f"{prefix}/data-quality",
+                       tags=["data-quality"], dependencies=admin)
+    app.include_router(health_bp, prefix=f"{prefix}/health", tags=["health"], dependencies=admin)
     app.include_router(dashboard_bp, prefix=f"{prefix}/dashboard", tags=["dashboard"])
     app.include_router(imports_bp, prefix=f"{prefix}/imports", tags=["imports"])
     app.include_router(measurements_bp, prefix=f"{prefix}/measurements", tags=["measurements"])
-    app.include_router(maintenance_bp, prefix=f"{prefix}/maintenance", tags=["maintenance"])
+    app.include_router(maintenance_bp, prefix=f"{prefix}/maintenance",
+                       tags=["maintenance"], dependencies=admin)
     app.include_router(reports_bp, prefix=f"{prefix}/reports", tags=["reports"])
     app.include_router(stations_bp, prefix=f"{prefix}/stations", tags=["stations"])
     app.include_router(sensors_bp, prefix=f"{prefix}/sensors", tags=["sensors"])
@@ -36,9 +43,9 @@ def register_routers(app, prefix):
         measurement_types_bp, prefix=f"{prefix}/measurement-types",
         tags=["measurement-types"],
     )
-    app.include_router(users_bp, prefix=f"{prefix}/users", tags=["users"])
+    app.include_router(users_bp, prefix=f"{prefix}/users", tags=["users"], dependencies=admin)
     app.include_router(system_bp, prefix=f"{prefix}/system", tags=["system"])
-    app.include_router(audit_bp, prefix=prefix, tags=["audit"])
+    app.include_router(audit_bp, prefix=prefix, tags=["audit"], dependencies=admin)
     app.include_router(
         accomplishment_bp, prefix=f"{prefix}/accomplishment",
         tags=["accomplishment"],

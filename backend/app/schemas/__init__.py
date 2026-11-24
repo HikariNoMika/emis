@@ -16,7 +16,15 @@ from .accomplishment import (
     WeightsUpdate,
 )
 from .alerts import AlertActionSchema, AlertQuerySchema
-from .auth import ChangePasswordSchema, LoginSchema, UserSchema
+from .auth import (
+    ChangePasswordSchema,
+    LoginSchema,
+    MFACodeSchema,
+    MFADisableSchema,
+    MFAVerifySchema,
+    UserSchema,
+    validate_password_policy,
+)
 from .imports import ImportMappingSchema, ImportQuerySchema
 from .maintenance import MaintenanceQuerySchema, MaintenanceSchema
 from .measurement_types import MeasurementTypeSchema
@@ -49,6 +57,7 @@ __all__ = [
     "FillGapsSchema", "FlexibleComparisonQuerySchema", "ImportMappingSchema",
     "ImportQuerySchema", "IndicatorCreate",
     "IndicatorUpdate", "LoginSchema",
+    "MFACodeSchema", "MFADisableSchema", "MFAVerifySchema",
     "MaintenanceQuerySchema", "MaintenanceSchema", "MeasurementQuerySchema",
     "MeasurementTypeSchema", "QualityFlagQuerySchema", "ReportGenerate",
     "ReportGenerateSchema", "ReportRevise",
@@ -56,5 +65,5 @@ __all__ = [
     "SensorSchema", "StationQuerySchema", "StationSchema",
     "StatisticsQuerySchema", "SummaryQuery", "SystemSettingSchema", "UserProfileUpdateSchema",
     "TargetCreate", "TargetUpdate", "TrendsQuerySchema", "UserSchema",
-    "WeightsUpdate",
+    "WeightsUpdate", "validate_password_policy",
 ]

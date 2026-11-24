@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useStations } from '../../hooks/useStations'
+import { useAuth } from '../../context/AuthContext'
 import { findStationByName } from '../../utils/stations'
 import {
   Activity,
@@ -61,7 +62,15 @@ const NAV_ITEMS = [
 // import, so a site is only linked once it actually exists in the database.
 const AWS_STATIONS = ['Salacafe', 'Lake Sebu', 'Sto Niño']
 
+// Administrative / technical pages shown only to admins.
+const ADMIN_ONLY = new Set([
+  'Latest Monitoring', 'Station Health', 'Data Quality', 'Maintenance',
+  'Audit Logs', 'User Management', 'System Settings',
+])
+
 export default function Sidebar({ collapsed, onToggle }) {
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
   const stationsQuery = useStations({ page: 1, per_page: 100 })
   const stations = stationsQuery.data?.data || []
   const [awsOpen, setAwsOpen] = useState(false)
@@ -92,7 +101,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto px-2 py-4">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => isAdmin || !ADMIN_ONLY.has(item.label)).map((item) => {
           const Icon = item.icon
           if (!item.available) {
             return (

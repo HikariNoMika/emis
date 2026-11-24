@@ -88,4 +88,4 @@ def test_non_admin_cannot_manage_users(client, auth_headers):
     }).json()
     headers = {"Authorization": f"Bearer {login['data']['access_token']}"}
 
-    assert client.get("/api/v1/users", headers=headers).status_code == 400
+    assert client.get("/api/v1/users", headers=headers).status_code == 403

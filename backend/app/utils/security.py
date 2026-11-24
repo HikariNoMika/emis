@@ -7,7 +7,7 @@ Flask-JWT-Extended while keeping the same /api/v1/auth endpoints.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, Request
@@ -77,6 +77,11 @@ def create_refresh_token(user_id, claims=None):
     )
 
 
+def create_mfa_challenge(user_id):
+    """Short-lived token proving the password step passed; used to finish MFA."""
+    return _create_token(user_id, "mfa", {}, timedelta(minutes=5))
+
+
 def decode_token(token, expected_type="access"):
     """Decode and validate a token. Raises HTTPException 401 on failure."""
     settings = get_settings()
@@ -114,6 +119,25 @@ def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="Account is inactive or missing.")
     set_current_user_id(user.id)
+    return user
+
+
+def require_admin(user=Depends(get_current_user)):
+    """Restrict a router/endpoint to administrators only."""
+    if getattr(user, "role", None) != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Administrator access required.")
+    return user
+
+
+def require_password_changed(user=Depends(get_current_user)):
+    """Block API use until a forced password change is completed."""
+    if getattr(user, "must_change_password", False):
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=403,
+            detail="Password change required before accessing the system.",
+        )
     return user
 
 
