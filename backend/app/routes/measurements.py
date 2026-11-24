@@ -1,8 +1,13 @@
 """Measurement, trend, statistics and export endpoints."""
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response
 
-from app.schemas import FlexibleComparisonQuerySchema, MeasurementQuerySchema
+from app.schemas import (
+    FillGapsSchema,
+    FlexibleComparisonQuerySchema,
+    MeasurementQuerySchema,
+)
 from app.services import measurement_service
 from app.utils.responses import ok, paginated
 from app.utils.security import get_current_user
@@ -23,6 +28,37 @@ def list_measurements(request: Request, user=Depends(get_current_user)):
         payload.model_dump(), payload.page, payload.per_page, date_from, date_to
     )
     return paginated(items, pagination.page, pagination.per_page, pagination.total)
+
+
+@measurements_bp.post("/gaps/fill")
+def fill_gaps(payload: FillGapsSchema, user=Depends(get_current_user)):
+    """Add timestamp-only placeholder rows where readings are missing."""
+    return ok(data=measurement_service.fill_gaps(
+        payload.station_id, payload.measurement_type_id
+    ))
+
+
+@measurements_bp.get("/gaps")
+def data_gaps(request: Request, user=Depends(get_current_user)):
+    """Timestamp gaps for a station, optionally for one measurement type."""
+    payload = _query_model(request, MeasurementQuerySchema)
+    date_from, date_to = parse_iso(payload.date_from), parse_iso(payload.date_to)
+    return ok(data=measurement_service.data_gaps(
+        payload.station_id,
+        payload.measurement_type_id,
+        date_from,
+        date_to,
+    ))
+
+
+@measurements_bp.get("/range")
+def observation_range(request: Request, user=Depends(get_current_user)):
+    """First/last stored observation time and total measurement count."""
+    payload = _query_model(request, MeasurementQuerySchema)
+    date_from, date_to = parse_iso(payload.date_from), parse_iso(payload.date_to)
+    return ok(data=measurement_service.observation_range(
+        payload.station_id, date_from, date_to
+    ))
 
 
 @measurements_bp.get("/latest")
@@ -96,6 +132,23 @@ def compare_flexible(request: Request, user=Depends(get_current_user)):
         from app.utils.responses import error
         return error("Measurement type not found.", 404)
     return ok(data=result)
+
+
+@measurements_bp.get("/export-source")
+def export_source(request: Request, user=Depends(get_current_user)):
+    """Download the original workbook layout for this station and date range."""
+    payload = _query_model(request, MeasurementQuerySchema)
+    date_from, date_to = parse_iso(payload.date_from), parse_iso(payload.date_to)
+    content = measurement_service.export_source_xlsx(
+        payload.station_id, date_from, date_to
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="pfms_source_{payload.station_id}.xlsx"'
+        },
+    )
 
 
 @measurements_bp.get("/export")

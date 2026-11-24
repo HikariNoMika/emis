@@ -23,6 +23,7 @@ from .measurement_types import MeasurementTypeSchema
 from .measurements import (
     ComparisonQuerySchema,
     ExportQuerySchema,
+    FillGapsSchema,
     FlexibleComparisonQuerySchema,
     MeasurementQuerySchema,
     StatisticsQuerySchema,
@@ -45,7 +46,7 @@ __all__ = [
     "ActualCreate", "ActualUpdate", "AlertActionSchema", "AlertQuerySchema", "AuditLogFilterSchema",
     "AttachmentUpload", "CategoryOut", "ChangePasswordSchema",
     "ComparisonQuerySchema", "DataCompletenessQuery", "ExportQuerySchema",
-    "FlexibleComparisonQuerySchema", "ImportMappingSchema",
+    "FillGapsSchema", "FlexibleComparisonQuerySchema", "ImportMappingSchema",
     "ImportQuerySchema", "IndicatorCreate",
     "IndicatorUpdate", "LoginSchema",
     "MaintenanceQuerySchema", "MaintenanceSchema", "MeasurementQuerySchema",

@@ -13,6 +13,7 @@ from app.extensions import db
 from app.integrations.normalizer import normalize_number
 from app.services.exceptions import ConflictError, ValidationAppError
 from app.integrations.timestamp_parser import parse_timestamp
+from app.utils import import_progress
 from app.models import (
     DataQualityFlag,
     Measurement,
@@ -54,12 +55,20 @@ def _existing_keys(station_id):
     """
     from datetime import timezone
 
-    keys = set()
+    # key -> the Measurement when it is a gap-fill placeholder, else None.
+    # Placeholders can be upgraded to real readings by a later import.
+    keys = {}
     for item in Measurement.query.filter_by(station_id=station_id).all():
         observed = item.observation_time
         if observed is not None and observed.tzinfo is None:
             observed = observed.replace(tzinfo=timezone.utc)
-        keys.add((item.sensor_id, item.measurement_type_id, observed))
+        placeholder = (
+            item
+            if item.quality_status == "MISSING"
+            and item.source_record_identifier == "GAP_FILL"
+            else None
+        )
+        keys[(item.sensor_id, item.measurement_type_id, observed)] = placeholder
     return keys
 
 
@@ -255,7 +264,7 @@ def execute_import(batch, user_id):
     batch.started_at = utcnow()
     db.session.commit()
 
-    imported = duplicates = errors = warnings = 0
+    imported = duplicates = errors = warnings = upgraded = 0
     # Flush in batches instead of once per reading. A flush is a database
     # round-trip; doing one per row made large workbooks extremely slow.
     FLUSH_EVERY = 1000
@@ -272,8 +281,9 @@ def execute_import(batch, user_id):
         .order_by(RawImportRecord.row_number)
         .all()
     )
+    import_progress.start(batch.id, len(records), "Processing stored rows…")
 
-    for record in records:
+    for index, record in enumerate(records, start=1):
         payload = record.raw_payload or {}
         observation_time = parse_timestamp(
             payload.get(timestamp_column), timezone_name
@@ -307,9 +317,29 @@ def execute_import(batch, user_id):
             measurement_sensor_id = _sensor_id_for_measurement(mapping, header) or sensor_id
             key = (measurement_sensor_id, measurement_type.id, observation_time)
             if key in existing_keys:
+                placeholder = existing_keys[key]
+                if placeholder is not None:
+                    # A gap-fill row held only a timestamp. Upgrade it with the
+                    # real values from this file instead of creating a second
+                    # row (the unique index forbids that anyway).
+                    placeholder.original_value = number
+                    placeholder.original_text = (
+                        None if raw_value is None else str(raw_value)
+                    )
+                    placeholder.normalized_value = number
+                    placeholder.quality_status = status
+                    placeholder.source_record_identifier = str(
+                        payload.get("record_id") or record.row_number
+                    )
+                    placeholder.import_batch_id = batch.id
+                    placeholder.raw_import_record_id = record.id
+                    placeholder.processed_at = utcnow()
+                    existing_keys[key] = None
+                    upgraded += 1
+                    continue
                 duplicates += 1
                 row_notes.append(f"duplicate {code}")
-                continue  # NEVER overwrite an existing reading
+                continue  # NEVER overwrite a real reading
 
             measurement = Measurement(
                 station_id=station_id,
@@ -326,7 +356,7 @@ def execute_import(batch, user_id):
                 source_record_identifier=str(payload.get("record_id") or record.row_number),
             )
             db.session.add(measurement)
-            existing_keys.add(key)
+            existing_keys[key] = None
             imported += 1
 
             if status in {"SUSPECT", "INVALID", "MISSING"}:
@@ -362,6 +392,13 @@ def execute_import(batch, user_id):
             "; ".join(row_notes) if row_notes else "Processed successfully."
         )
 
+        if index % 25 == 0 or index == len(records):
+            import_progress.update(
+                batch.id,
+                processed_rows=index,
+                message=f"Processing row {index:,} of {len(records):,}…",
+            )
+
     # Flush any remaining measurements and their flags.
     db.session.flush()
     _create_pending_flags(pending_flags, batch.id, station_id)
@@ -383,12 +420,15 @@ def execute_import(batch, user_id):
     except Exception:  # pragma: no cover - defensive
         db.session.rollback()
 
-    return {
+    summary = {
         "batch_id": batch.id,
         "status": batch.status,
         "total_rows": batch.total_rows,
         "imported_rows": imported,
         "duplicate_rows": duplicates,
         "error_rows": errors,
+        "placeholders_upgraded": upgraded,
         "quality_flags_created": warnings,
     }
+    import_progress.finish(batch.id, result=summary)
+    return summary

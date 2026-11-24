@@ -30,6 +30,11 @@ celery.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     result_expires=3600,
+    # Never let a missing broker stall a request for minutes; the importer
+    # checks availability first and processes inline when Redis is absent.
+    broker_connection_timeout=2,
+    broker_connection_max_retries=0,
+    task_publish_retry=False,
 )
 
 

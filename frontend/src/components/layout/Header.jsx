@@ -32,7 +32,7 @@ export default function Header({ onOpenMobileMenu }) {
         </button>
         <div>
           <p className="text-sm font-semibold text-slate-900">
-            Environmental Monitoring Information System
+            PFMS Watershed
           </p>
           <p className="hidden text-xs text-slate-500 sm:block">
             Administration Portal

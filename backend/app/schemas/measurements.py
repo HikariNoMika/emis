@@ -16,6 +16,11 @@ class MeasurementQuerySchema(BaseModel):
     per_page: int = Field(default=50, ge=1, le=500)
 
 
+class FillGapsSchema(BaseModel):
+    station_id: int
+    measurement_type_id: int
+
+
 class TrendsQuerySchema(BaseModel):
     station_id: int
     measurement_type_ids: List[int]

@@ -15,6 +15,7 @@ MEASUREMENT_ALIASES = [
     ("electrical conductivity", "ec"),
     ("water temperature", "water_temperature"),
     ("water level", "water_level"),
+    ("systembattery", "system_battery_voltage"),
     ("systembatteryvolts", "system_battery_voltage"),
     ("systembatteryvoltage", "system_battery_voltage"),
     ("system temperature", "system_temperature"),

@@ -22,6 +22,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    event,
     func,
     or_,
     text,
@@ -33,7 +34,7 @@ from sqlalchemy.orm import (
     scoped_session,
     sessionmaker,
 )
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool, StaticPool
 
 
 class Pagination:
@@ -110,14 +111,39 @@ class Database:
     def init(self, settings):
         """Bind the engine. Called once from create_app()."""
         if settings.DATABASE_URL.startswith("sqlite"):
-            # SQLite (in-memory OR local file) shares one connection across the
-            # FastAPI worker threads. Without this, long-lived scoped sessions
-            # exhaust the default 5-connection QueuePool.
-            self.engine = create_engine(
-                settings.DATABASE_URL,
-                poolclass=StaticPool,
-                connect_args={"check_same_thread": False},
-            )
+            if ":memory:" in settings.DATABASE_URL:
+                # In-memory tests need ONE shared connection so every worker
+                # thread sees the same database (a new connection would be a
+                # brand-new, empty in-memory database).
+                self.engine = create_engine(
+                    settings.DATABASE_URL,
+                    poolclass=StaticPool,
+                    connect_args={"check_same_thread": False},
+                )
+            else:
+                # File-based SQLite: hand each thread its own pooled connection.
+                # A single StaticPool connection shared by concurrent FastAPI
+                # worker threads causes intermittent
+                # "sqlite3.InterfaceError: bad parameter or other API misuse".
+                self.engine = create_engine(
+                    settings.DATABASE_URL,
+                    poolclass=QueuePool,
+                    pool_size=10,
+                    max_overflow=20,
+                    pool_timeout=30,
+                    connect_args={"check_same_thread": False},
+                )
+
+                @event.listens_for(self.engine, "connect")
+                def _sqlite_pragmas(dbapi_connection, _record):
+                    # WAL + NORMAL keeps large imports much faster on a local
+                    # SQLite file while staying safe for a single-user setup.
+                    cursor = dbapi_connection.cursor()
+                    try:
+                        cursor.execute("PRAGMA journal_mode=WAL")
+                        cursor.execute("PRAGMA synchronous=NORMAL")
+                    finally:
+                        cursor.close()
         else:
             self.engine = create_engine(
                 settings.DATABASE_URL, **settings.SQLALCHEMY_ENGINE_OPTIONS

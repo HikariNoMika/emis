@@ -25,6 +25,7 @@ echarts.use([
 /** Reusable time-series chart powered by Apache ECharts. */
 export default function TrendChart({
   title, series = [], height = 280, unit, xField = 'time', axisType = 'time',
+  yMin, yMax, yStep,
 }) {
   const option = {
     title: title ? { text: title, textStyle: { fontSize: 13, fontWeight: 600 } } : undefined,
@@ -42,7 +43,11 @@ export default function TrendChart({
     yAxis: {
       type: 'value',
       name: unit || '',
-      scale: true,
+      // Explicit bounds turn off ECharts' auto-scaling; blank fields stay auto.
+      scale: yMin === undefined && yMax === undefined,
+      ...(yMin !== undefined ? { min: yMin } : {}),
+      ...(yMax !== undefined ? { max: yMax } : {}),
+      ...(yStep !== undefined ? { interval: yStep } : {}),
       axisLabel: { fontSize: 10 },
     },
     dataZoom: [{ type: 'inside' }],

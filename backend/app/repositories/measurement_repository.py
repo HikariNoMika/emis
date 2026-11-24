@@ -1,5 +1,7 @@
 """Database queries for measurements, trends and statistics."""
 
+from sqlalchemy import func
+
 from app.extensions import db
 from app.models import Measurement, MeasurementType, Station
 
@@ -60,6 +62,22 @@ class MeasurementRepository:
         if date_to:
             query = query.filter(Measurement.observation_time <= date_to)
         return query.order_by(Measurement.observation_time.asc()).all()
+
+    @staticmethod
+    def observation_range(station_id=None, date_from=None, date_to=None):
+        """(first observation, last observation, row count) for the filters."""
+        query = db.session.query(
+            func.min(Measurement.observation_time),
+            func.max(Measurement.observation_time),
+            func.count(Measurement.id),
+        )
+        if station_id:
+            query = query.filter(Measurement.station_id == station_id)
+        if date_from:
+            query = query.filter(Measurement.observation_time >= date_from)
+        if date_to:
+            query = query.filter(Measurement.observation_time <= date_to)
+        return query.one()
 
     @staticmethod
     def station_timezone(station_id):

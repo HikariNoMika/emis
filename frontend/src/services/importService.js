@@ -1,4 +1,4 @@
-import api, { extractData } from './api'
+import api, { downloadFile, extractData } from './api'
 
 export const importService = {
   // FormData needs the multipart content type; the API client defaults to JSON.
@@ -32,6 +32,14 @@ export const importService = {
 
   async errors(id) {
     return extractData(await api.get(`/imports/${id}/errors`))
+  },
+
+  async progress(id) {
+    return extractData(await api.get(`/imports/${id}/progress`))
+  },
+
+  async downloadSource(id, fileName) {
+    await downloadFile(`/imports/${id}/file`, fileName)
   },
 }
 

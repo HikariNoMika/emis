@@ -7,10 +7,140 @@ import statistics
 from collections import defaultdict
 from datetime import timedelta
 
-from app.models import Measurement
+from app.models import ImportBatch, Measurement, MeasurementType, RawImportRecord, Station
+from app.services.exceptions import ValidationAppError
 from app.repositories.measurement_repository import MeasurementRepository
 from app.utils.serializers import measurement_to_dict
 from app.utils.time import to_iso
+
+
+def data_gaps(station_id, measurement_type_id=None, date_from=None, date_to=None, limit=100):
+    """Find timestamp jumps larger than the station's expected reading interval.
+
+    Distinct observation times are compared, so a gap means no reading at all
+    for that period — not merely a missing parameter.
+    """
+    from datetime import timezone
+
+    from app.extensions import db
+
+    interval = 900
+    if station_id:
+        station = db.session.get(Station, station_id)
+        if station and station.measurement_interval_seconds:
+            interval = station.measurement_interval_seconds
+
+    query = Measurement.query.with_entities(
+        Measurement.observation_time
+    ).distinct()
+    if station_id:
+        query = query.filter(Measurement.station_id == station_id)
+    if measurement_type_id:
+        query = query.filter(Measurement.measurement_type_id == measurement_type_id)
+    if date_from:
+        query = query.filter(Measurement.observation_time >= date_from)
+    if date_to:
+        query = query.filter(Measurement.observation_time <= date_to)
+
+    times = []
+    for (value,) in query.order_by(Measurement.observation_time.asc()).all():
+        if value is None:
+            continue
+        times.append(value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value)
+
+    gaps = []
+    total_missing = 0
+    for previous, current in zip(times, times[1:]):
+        seconds = (current - previous).total_seconds()
+        missing = int(seconds // interval) - 1
+        if missing >= 1:
+            total_missing += missing
+            gaps.append({
+                "start": to_iso(previous),
+                "end": to_iso(current),
+                "gap_minutes": round(seconds / 60, 1),
+                "missing_readings": missing,
+            })
+
+    gaps.sort(key=lambda item: item["missing_readings"], reverse=True)
+    return {
+        "station_id": station_id,
+        "measurement_type_id": measurement_type_id,
+        "interval_seconds": interval,
+        "total_gaps": len(gaps),
+        "total_missing_readings": total_missing,
+        "gaps": gaps[:limit] if limit else gaps,
+    }
+
+
+def fill_gaps(station_id, measurement_type_id):
+    """Insert timestamp-only placeholder rows at every gap for one parameter.
+
+    Values stay empty (NULL) and quality_status becomes MISSING, so the gap is
+    represented honestly instead of being filled with invented readings.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.extensions import db
+
+    station = db.session.get(Station, station_id)
+    if station is None:
+        raise ValidationAppError("Station not found.")
+    measurement_type = db.session.get(MeasurementType, measurement_type_id)
+    if measurement_type is None:
+        raise ValidationAppError("Measurement type not found.")
+
+    interval = station.measurement_interval_seconds or 900
+    gaps = data_gaps(station_id, measurement_type_id, limit=None)["gaps"]
+
+    existing = set()
+    rows = db.session.query(Measurement.observation_time).filter_by(
+        station_id=station_id,
+        measurement_type_id=measurement_type_id,
+        sensor_id=None,
+    ).all()
+    for (value,) in rows:
+        if value is not None:
+            existing.add(
+                value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+            )
+
+    created = 0
+    for gap in gaps:
+        current = datetime.fromisoformat(gap["start"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(gap["end"].replace("Z", "+00:00"))
+        current += timedelta(seconds=interval)
+        while current < end:
+            if current not in existing:
+                db.session.add(Measurement(
+                    station_id=station_id,
+                    measurement_type_id=measurement_type_id,
+                    sensor_id=None,
+                    observation_time=current,
+                    quality_status="MISSING",
+                    unit=measurement_type.unit,
+                    source_record_identifier="GAP_FILL",
+                ))
+                existing.add(current)
+                created += 1
+                if created % 1000 == 0:
+                    db.session.flush()
+            current += timedelta(seconds=interval)
+
+    db.session.commit()
+    return {"created_rows": created, "gaps_processed": len(gaps)}
+
+
+def observation_range(station_id=None, date_from=None, date_to=None):
+    """Stored time coverage of the measurements for the given filters."""
+    first, last, count = MeasurementRepository.observation_range(
+        station_id, date_from, date_to
+    )
+    return {
+        "first_observation": to_iso(first),
+        "last_observation": to_iso(last),
+        "total_measurements": count,
+    }
 
 
 def list_measurements(filters, page, per_page, date_from, date_to):
@@ -338,6 +468,99 @@ def export_rows(filters, date_from, date_to):
         filters, 1, 50000, date_from, date_to
     )
     return pagination.items
+
+
+def export_source_xlsx(station_id, date_from=None, date_to=None):
+    """Export the preserved source rows in the workbook's original wide format.
+
+    Each uploaded file becomes one sheet. Column headers and values come from
+    raw_import_records, so the download mirrors what was imported rather than
+    the normalized measurement table.
+    """
+    from datetime import timezone
+
+    from openpyxl import Workbook
+
+    from app.extensions import db
+    from app.integrations.timestamp_parser import parse_timestamp
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    sheets_written = 0
+
+    station = db.session.get(Station, station_id) if station_id else None
+    timezone_name = station.timezone if station and station.timezone else "Asia/Manila"
+
+    def in_range(record):
+        payload = record.raw_payload or {}
+        observed = parse_timestamp(payload.get("Timestamps"), timezone_name)
+        if observed is None:
+            date_text = payload.get("Date")
+            time_text = payload.get("Time")
+            if date_text and time_text:
+                observed = parse_timestamp(f"{date_text} {time_text}", timezone_name)
+        if observed is None:
+            return not (date_from or date_to)
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=timezone.utc)
+        if date_from and observed < date_from:
+            return False
+        if date_to and observed > date_to:
+            return False
+        return True
+
+    batches = ImportBatch.query.filter_by(station_id=station_id).order_by(
+        ImportBatch.id.asc()
+    ).all()
+    for batch in batches:
+        candidates = (
+            RawImportRecord.query.filter_by(import_batch_id=batch.id)
+            .order_by(RawImportRecord.row_number.asc())
+            .all()
+        )
+        records = [record for record in candidates if in_range(record)]
+        if not records:
+            continue
+
+        headers = []
+        for record in records:
+            for key in (record.raw_payload or {}).keys():
+                if key not in headers:
+                    headers.append(key)
+        if "Timestamps" in headers:
+            headers.remove("Timestamps")
+            headers.insert(0, "Timestamps")
+
+        raw_name = (
+            (batch.sheet_names or [None])[0]
+            or batch.original_filename
+            or f"import_{batch.id}"
+        )
+        sheet = workbook.create_sheet(
+            str(raw_name)[:31].replace("[", "").replace("]", "")
+            .replace(":", "").replace("*", "").replace("?", "")
+            .replace("/", "").replace("\\", "") or f"import_{batch.id}"
+        )
+        sheet.append(headers)
+        for record in records:
+            payload = record.raw_payload or {}
+            row = []
+            for header in headers:
+                value = payload.get(header)
+                row.append(value if isinstance(value, (int, float, str)) else (
+                    None if value is None else str(value)
+                ))
+            sheet.append(row)
+        sheets_written += 1
+
+    if sheets_written == 0:
+        sheet = workbook.create_sheet("no_data")
+        sheet.append(["No source rows found for the selected filters."])
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output.getvalue()
 
 
 def export_csv(records):

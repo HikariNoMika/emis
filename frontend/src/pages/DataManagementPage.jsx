@@ -3,11 +3,12 @@ import { useState } from 'react'
 import DataTable from '../components/ui/DataTable'
 import ErrorState from '../components/ui/ErrorState'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
+import ImportProgressBar from '../components/ui/ImportProgressBar'
 import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import Pagination from '../components/ui/Pagination'
 import StatusBadge from '../components/ui/StatusBadge'
-import { useImportPreview, useImports } from '../hooks/useImports'
+import { useImportPreview, useImportProgress, useImports } from '../hooks/useImports'
 import { useMeasurementTypes, useSensors } from '../hooks/useSensors'
 import { useStations } from '../hooks/useStations'
 import { extractError } from '../services/api'
@@ -21,10 +22,12 @@ export default function DataManagementPage() {
   const [selectedBatch, setSelectedBatch] = useState(null)
   const [notice, setNotice] = useState('')
   const [draftMapping, setDraftMapping] = useState(null)
+  const [activeBatchId, setActiveBatchId] = useState(null)
 
   const importsQuery = useImports({ page, per_page: 15 })
   const stationsQuery = useStations({ page: 1, per_page: 100 })
   const previewQuery = useImportPreview(selectedBatch?.id)
+  const progressQuery = useImportProgress(activeBatchId, Boolean(activeBatchId))
   const typesQuery = useMeasurementTypes()
   const sensorsQuery = useSensors({
     station_id: draftMapping?.station_id || selectedBatch?.station_id,
@@ -67,7 +70,9 @@ export default function DataManagementPage() {
           : `Import complete: ${result.summary.imported_rows} inserted, ${result.summary.duplicate_rows} duplicates skipped.`,
       )
       setSelectedBatch(null)
+      setActiveBatchId(null)
     },
+    onError: () => setActiveBatchId(null),
   })
 
   const handleUpload = (event) => {
@@ -102,6 +107,7 @@ export default function DataManagementPage() {
 
   const saveAndProcess = async () => {
     await mappingMutation.mutateAsync({ id: selectedBatch.id, payload: mapping })
+    setActiveBatchId(selectedBatch.id)
     await processMutation.mutateAsync(selectedBatch.id)
   }
 
@@ -204,6 +210,7 @@ export default function DataManagementPage() {
             <ErrorState message={extractError(previewQuery.error)} onRetry={previewQuery.refetch} />
           ) : (
             <div className="space-y-5">
+              {activeBatchId && <ImportProgressBar progress={progressQuery.data} />}
               {preview?.mapping ? (
                 <div className="grid gap-3 rounded-md bg-slate-50 p-3 sm:grid-cols-2">
                   <div>

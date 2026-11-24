@@ -47,10 +47,10 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-lg bg-brand-700 text-lg font-bold text-white">
-            EM
+            PW
           </div>
           <h1 className="text-xl font-semibold text-slate-900">
-            Environmental Monitoring Information System
+            PFMS Watershed
           </h1>
           <p className="mt-1 text-sm text-slate-600">Administrator sign in</p>
         </div>

@@ -94,3 +94,53 @@ def process_import(batch_id: int, user=Depends(get_current_user)):
 @imports_bp.get("/{batch_id}/errors")
 def import_errors(batch_id: int, user=Depends(get_current_user)):
     return ok(data=import_service.get_errors(_get_batch(batch_id)))
+
+
+@imports_bp.get("/{batch_id}/progress")
+def import_progress_status(batch_id: int, user=Depends(get_current_user)):
+    """Live progress for the inline import; falls back to stored batch status."""
+    from app.utils import import_progress
+
+    job = import_progress.get(batch_id)
+    if job is not None:
+        return ok(data=job)
+
+    batch = _get_batch(batch_id)
+    finished = batch.status in {"COMPLETED", "FAILED"}
+    return ok(data={
+        "batch_id": batch_id,
+        "status": batch.status if finished else "RUNNING",
+        "total_rows": batch.total_rows or 0,
+        "processed_rows": batch.total_rows or 0 if finished else 0,
+        "percent": 100 if finished else 0,
+        "message": "Import complete." if batch.status == "COMPLETED" else f"Status: {batch.status}",
+        "started_at": None,
+        "finished_at": None,
+        "result": None,
+        "error": None,
+    })
+
+
+@imports_bp.get("/{batch_id}/file")
+def download_source_file(batch_id: int, user=Depends(get_current_user)):
+    """Download the original Excel/CSV exactly as it was uploaded."""
+    import os
+
+    from fastapi.responses import FileResponse
+
+    from app.config import get_settings
+
+    batch = _get_batch(batch_id)
+    stored_path = batch.stored_path
+    if not stored_path or not os.path.isfile(stored_path):
+        raise NotFoundError("The original source file is not available on disk.")
+
+    upload_root = os.path.abspath(get_settings().UPLOAD_FOLDER)
+    if os.path.commonpath([upload_root, os.path.abspath(stored_path)]) != upload_root:
+        raise ValidationAppError("Invalid source file path.")
+
+    return FileResponse(
+        stored_path,
+        filename=batch.original_filename or "source-file",
+        media_type="application/octet-stream",
+    )

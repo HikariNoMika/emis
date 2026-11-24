@@ -5,6 +5,29 @@ export const measurementService = {
     return extractData(await api.get('/measurements/latest', { params }))
   },
 
+  async range(params) {
+    return extractData(await api.get('/measurements/range', { params }))
+  },
+
+  async gaps(params) {
+    return extractData(await api.get('/measurements/gaps', { params }))
+  },
+
+  async exportSource(params, fileName) {
+    const query = new URLSearchParams(params).toString()
+    await downloadFile(
+      `/measurements/export-source?${query}`,
+      fileName || 'pfms-source-export',
+    )
+  },
+
+  async fillGaps(stationId, measurementTypeId) {
+    return extractData(await api.post('/measurements/gaps/fill', {
+      station_id: stationId,
+      measurement_type_id: measurementTypeId,
+    }))
+  },
+
   async trends(params) {
     return extractData(await api.get('/measurements/trends', { params }))
   },
@@ -34,7 +57,7 @@ export const measurementService = {
 
   async exportFile(params, fileName) {
     const query = new URLSearchParams(params).toString()
-    await downloadFile(`/measurements/export?${query}`, fileName || 'emis-export')
+    await downloadFile(`/measurements/export?${query}`, fileName || 'pfms-export')
   },
   // Kept for compatibility; a plain <a href> cannot send the JWT.
   exportUrl(params) {

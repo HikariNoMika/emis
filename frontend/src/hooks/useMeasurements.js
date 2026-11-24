@@ -8,6 +8,22 @@ export function useLatestMeasurements(params = {}) {
   })
 }
 
+export function useDataGaps(params) {
+  return useQuery({
+    queryKey: ['measurements', 'gaps', params],
+    queryFn: () => measurementService.gaps(params),
+    enabled: Boolean(params.station_id),
+  })
+}
+
+export function useObservationRange(params) {
+  return useQuery({
+    queryKey: ['measurements', 'range', params],
+    queryFn: () => measurementService.range(params),
+    enabled: Boolean(params.station_id),
+  })
+}
+
 export function useTrends(params) {
   return useQuery({
     queryKey: ['measurements', 'trends', params],

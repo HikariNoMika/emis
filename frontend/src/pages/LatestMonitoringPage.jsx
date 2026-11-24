@@ -34,7 +34,7 @@ export default function LatestMonitoringPage() {
         description="Most recent observation stored for each measurement type, with station and timestamp."
         actions={
           <button type="button" className="btn-secondary"
-            onClick={() => measurementService.exportFile({ format: 'csv' }, 'emis_measurements.csv')}>
+            onClick={() => measurementService.exportFile({ format: 'csv' }, 'pfms_measurements.csv')}>
             Export CSV
           </button>
         }

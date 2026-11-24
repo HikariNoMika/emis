@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useStations } from '../../hooks/useStations'
+import { findStationByName } from '../../utils/stations'
 import {
   Activity,
   AlertTriangle,
   Award,
-  BarChart3,
   ChevronDown,
+  CloudSun,
   ChevronLeft,
   ClipboardList,
   Database,
@@ -19,6 +20,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Waves,
   Wrench,
 } from 'lucide-react'
 
@@ -29,7 +31,18 @@ const NAV_ITEMS = [
   { label: 'Station Map', to: '/map', icon: Map, available: true },
   { label: 'Stations', to: '/stations', icon: MapPin, available: true },
   { label: 'Sensor Management', to: '/sensors', icon: Radio, available: true },
-  { label: 'Environmental Analytics', icon: BarChart3, available: true, dropdown: true },
+  {
+    label: 'Automated Water Level Station (AWLS)',
+    icon: Waves,
+    available: true,
+    dropdown: 'awls',
+  },
+  {
+    label: 'Automated Weather Station (AWS)',
+    icon: CloudSun,
+    available: true,
+    dropdown: 'aws',
+  },
   { label: 'Latest Monitoring', to: '/latest', icon: Activity, available: true },
   { label: 'Station Health', to: '/health', icon: ShieldCheck, available: true },
   { label: 'Data Quality', to: '/data-quality', icon: ClipboardList, available: true },
@@ -44,14 +57,18 @@ const NAV_ITEMS = [
   { label: 'System Settings', to: '/settings', icon: Settings, available: true },
 ]
 
+// The three AWS sites. Stations are created from workbook metadata during an
+// import, so a site is only linked once it actually exists in the database.
+const AWS_STATIONS = ['Salacafe', 'Lake Sebu', 'Sto Niño']
+
 export default function Sidebar({ collapsed, onToggle }) {
   const stationsQuery = useStations({ page: 1, per_page: 100 })
   const stations = stationsQuery.data?.data || []
-  const [analyticsOpen, setAnalyticsOpen] = useState(false)
+  const [awsOpen, setAwsOpen] = useState(false)
+  const [awlsOpen, setAwlsOpen] = useState(false)
   const location = useLocation()
-  const analyticsActive =
-    location.pathname.startsWith('/analytics') ||
-    /^\/stations\/\d+\/analytics/.test(location.pathname)
+  const awsActive = location.pathname.startsWith('/aws')
+  const awlsActive = location.pathname.startsWith('/awls')
 
   return (
     <aside
@@ -62,13 +79,13 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* Agency-style brand block */}
       <div className="flex h-16 items-center gap-3 border-b border-white/10 px-4">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-white/10 font-bold text-white">
-          EM
+          PW
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">EMIS</p>
+            <p className="truncate text-sm font-semibold text-white">PFMS Watershed</p>
             <p className="truncate text-[11px] text-brand-100/70">
-              Environmental Monitoring
+              Watershed Monitoring
             </p>
           </div>
         )}
@@ -98,13 +115,22 @@ export default function Sidebar({ collapsed, onToggle }) {
           }
 
           if (item.dropdown) {
+            const isAwls = item.dropdown === 'awls'
+            const isAws = !isAwls
+            const isOpen = isAwls ? awlsOpen : awsOpen
+            const toggle = isAwls
+              ? () => setAwlsOpen((open) => !open)
+              : () => setAwsOpen((open) => !open)
+            const active = isAwls ? awlsActive : awsActive
+            const namnama = findStationByName(stations, 'NAMNAMA')
+
             return (
               <div key={item.label}>
                 <button
                   type="button"
-                  onClick={() => setAnalyticsOpen((open) => !open)}
+                  onClick={toggle}
                   className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition ${
-                    analyticsActive
+                    active
                       ? 'bg-brand-700 text-white'
                       : 'text-brand-100/80 hover:bg-white/10 hover:text-white'
                   }`}
@@ -116,32 +142,56 @@ export default function Sidebar({ collapsed, onToggle }) {
                       <ChevronDown
                         size={14}
                         className={`ml-auto shrink-0 transition-transform ${
-                          analyticsOpen ? 'rotate-180' : ''
+                          isOpen ? 'rotate-180' : ''
                         }`}
                       />
                     </>
                   )}
                 </button>
 
-                {analyticsOpen && !collapsed && (
+                {isOpen && !collapsed && (
                   <div className="ml-4 mt-1 space-y-1 border-l border-white/10 pl-2">
-                    <NavLink
-                      to="/analytics"
-                      className={({ isActive }) =>
-                        `block rounded px-2 py-1.5 text-xs transition ${
-                          isActive && location.pathname === '/analytics'
-                            ? 'bg-brand-600 text-white'
-                            : 'text-brand-100/70 hover:bg-white/10 hover:text-white'
-                        }`
-                      }
-                    >
-                      All stations
-                    </NavLink>
-                    {stations.map((station) => (
+                    {isAws ? (
+                      AWS_STATIONS.map((name) => {
+                        const station = findStationByName(stations, name)
+                        return (
+                          <NavLink
+                            key={name}
+                            to={
+                              station
+                                ? `/aws/${station.id}`
+                                : `/aws/new?name=${encodeURIComponent(name)}`
+                            }
+                            title={station ? station.name : `Upload data for ${name}`}
+                            className={({ isActive }) =>
+                              `block rounded px-2 py-1.5 text-xs transition ${
+                                isActive
+                                  ? 'bg-brand-600 text-white'
+                                  : 'text-brand-100/70 hover:bg-white/10 hover:text-white'
+                              }`
+                            }
+                          >
+                            <span className="block truncate">{name}</span>
+                            <span className="block truncate text-[10px] text-brand-100/50">
+                              {station ? station.station_code : 'Upload data →'}
+                            </span>
+                          </NavLink>
+                        )
+                      })
+                    ) : !namnama ? (
+                      <div
+                        title="Upload a water-level CSV for NAMNAMA from Data Management."
+                        className="rounded px-2 py-1.5 text-xs text-brand-100/40"
+                      >
+                        <span className="block truncate">NAMNAMA</span>
+                        <span className="block truncate text-[10px] text-brand-100/30">
+                          Awaiting import
+                        </span>
+                      </div>
+                    ) : (
                       <NavLink
-                        key={station.id}
-                        to={`/stations/${station.id}/analytics`}
-                        title={station.name}
+                        to="/awls"
+                        title={namnama.name}
                         className={({ isActive }) =>
                           `block rounded px-2 py-1.5 text-xs transition ${
                             isActive
@@ -150,12 +200,12 @@ export default function Sidebar({ collapsed, onToggle }) {
                           }`
                         }
                       >
-                        <span className="block truncate">{station.name}</span>
+                        <span className="block truncate">NAMNAMA</span>
                         <span className="block truncate text-[10px] text-brand-100/50">
-                          {station.station_code}
+                          {namnama.station_code}
                         </span>
                       </NavLink>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>

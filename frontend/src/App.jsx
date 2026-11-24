@@ -4,6 +4,9 @@ import AccomplishmentPage from './pages/AccomplishmentPage'
 import AlertsPage from './pages/AlertsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import AuditLogsPage from './pages/AuditLogsPage'
+import AwlsPage from './pages/AwlsPage'
+import AwsStationPage from './pages/AwsStationPage'
+import AwsUploadPage from './pages/AwsUploadPage'
 import DataQualityPage from './pages/DataQualityPage'
 import ComparisonPage from './pages/ComparisonPage'
 import DashboardPage from './pages/DashboardPage'
@@ -48,6 +51,9 @@ export default function App() {
           <Route path="sensors/:id" element={<SensorDetailPage />} />
           <Route path="data-management" element={<DataManagementPage />} />
           <Route path="analytics" element={<AnalyticsPage />} />
+          <Route path="aws/new" element={<AwsUploadPage />} />
+          <Route path="aws/:stationId" element={<AwsStationPage />} />
+          <Route path="awls" element={<AwlsPage />} />
           <Route path="latest" element={<LatestMonitoringPage />} />
           <Route path="comparison" element={<ComparisonPage />} />
           <Route path="health" element={<StationHealthPage />} />

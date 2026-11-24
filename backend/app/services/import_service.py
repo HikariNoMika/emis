@@ -9,6 +9,7 @@ from app.extensions import db
 from app.models import ImportBatch, MeasurementType, Sensor, Station
 from app.processors.import_processor import build_preview, create_raw_records, execute_import
 from app.processors.workbook_inspector import get_connector, inspect_file, suggest_mapping
+from app.utils import import_progress
 from app.utils.serializers import import_batch_to_dict
 
 from .audit_service import log_action
@@ -312,14 +313,34 @@ def get_errors(batch, limit=200):
     return [row for row in preview_data["rows"] if row["messages"]]
 
 
+def _broker_available():
+    """Quick check so an absent Redis does not stall every large import."""
+    import socket
+    from urllib.parse import urlparse
+
+    url = get_settings().CELERY_BROKER_URL or ""
+    parsed = urlparse(url)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 6379
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
 def process_batch(batch, user_id):
-    """Steps 8-11. Large files are handed to Celery."""
+    """Steps 8-11. Large files are handed to Celery if its broker is reachable."""
     if batch.status == "COMPLETED":
         raise ConflictError("This import batch has already been processed.")
     if batch.status in {"PROCESSING", "QUEUED"}:
         raise ConflictError("This import batch is already being processed.")
 
-    if batch.file_size_bytes and batch.file_size_bytes > BACKGROUND_THRESHOLD_BYTES:
+    if (
+        batch.file_size_bytes
+        and batch.file_size_bytes > BACKGROUND_THRESHOLD_BYTES
+        and _broker_available()
+    ):
         from app.tasks.import_tasks import process_import_task
 
         batch.status = "QUEUED"
@@ -334,7 +355,11 @@ def process_batch(batch, user_id):
             batch.status = "PREVIEWED"
             db.session.commit()
 
-    summary = execute_import(batch, user_id)
+    try:
+        summary = execute_import(batch, user_id)
+    except Exception as exc:
+        import_progress.finish(batch.id, error=str(exc))
+        raise
     log_action(
         "IMPORT_PROCESSED",
         "imports",
