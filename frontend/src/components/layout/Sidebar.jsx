@@ -73,7 +73,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   return (
     <aside
       className={`flex h-full shrink-0 flex-col border-r border-brand-900 bg-brand-900 text-brand-100 transition-all duration-200 ${
-        collapsed ? 'w-16' : 'w-64'
+        collapsed ? 'w-16' : 'w-80'
       }`}
     >
       {/* Agency-style brand block */}
@@ -138,7 +138,7 @@ export default function Sidebar({ collapsed, onToggle }) {
                   <Icon size={18} className="shrink-0" />
                   {!collapsed && (
                     <>
-                      <span className="truncate">{item.label}</span>
+                      <span className="leading-tight">{item.label}</span>
                       <ChevronDown
                         size={14}
                         className={`ml-auto shrink-0 transition-transform ${
