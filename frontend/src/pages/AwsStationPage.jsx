@@ -7,6 +7,7 @@ import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
 import LoadingSpinner from '../components/ui/LoadingSpinner'
+import Modal from '../components/ui/Modal'
 import PageHeader from '../components/ui/PageHeader'
 import SearchableSelect from '../components/ui/SearchableSelect'
 import StatusBadge from '../components/ui/StatusBadge'
@@ -24,6 +25,7 @@ import { useStation } from '../hooks/useStations'
 import { extractError } from '../services/api'
 import importService from '../services/importService'
 import measurementService from '../services/measurementService'
+import stationService from '../services/stationService'
 
 function dateInputToIso(value, endOfDay = false) {
   if (!value) return undefined
@@ -62,6 +64,9 @@ export default function AwsStationPage({
   const [fillNotice, setFillNotice] = useState('')
   const [exportNotice, setExportNotice] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearPassword, setClearPassword] = useState('')
+  const [clearNotice, setClearNotice] = useState('')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const queryClient = useQueryClient()
@@ -75,6 +80,22 @@ export default function AwsStationPage({
       queryClient.invalidateQueries({ queryKey: ['measurements'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       queryClient.invalidateQueries({ queryKey: ['data-quality'] })
+    },
+  })
+
+  const clearDataMutation = useMutation({
+    mutationFn: (password) => stationService.clearData(stationId, password),
+    onSuccess: (result) => {
+      setClearOpen(false)
+      setClearPassword('')
+      queryClient.invalidateQueries({ queryKey: ['measurements'] })
+      queryClient.invalidateQueries({ queryKey: ['imports'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      queryClient.invalidateQueries({ queryKey: ['data-quality'] })
+      setClearNotice(
+        `Cleared ${result?.measurements_deleted?.toLocaleString() ?? 0} readings ` +
+        `and ${result?.import_batches_deleted ?? 0} import(s). Re-upload the correct file.`,
+      )
     },
   })
 
@@ -248,19 +269,33 @@ export default function AwsStationPage({
         title={`${brand} — ${station.name}`}
         description={description}
         actions={
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={exporting}
-            onClick={handleExport}
-          >
-            {exporting ? 'Preparing Excel…' : 'Export Excel (source format)'}
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn-secondary border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => { setClearPassword(''); setClearNotice(''); setClearOpen(true) }}
+            >
+              Clear data
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={exporting}
+              onClick={handleExport}
+            >
+              {exporting ? 'Preparing Excel…' : 'Export Excel (source format)'}
+            </button>
+          </>
         }
       />
 
       {exportNotice && (
         <p className="mb-4 text-sm text-red-700">{exportNotice}</p>
+      )}
+      {clearNotice && (
+        <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          {clearNotice}
+        </p>
       )}
 
       <section className="card mb-4 p-4">
@@ -603,6 +638,44 @@ export default function AwsStationPage({
           <DataTable columns={sourceColumns} rows={sourceFiles} keyField="id" />
         )}
       </section>
+
+      {clearOpen && (
+        <Modal
+          title={`Clear data for ${station.name}`}
+          description="This cannot be undone."
+          onClose={() => setClearOpen(false)}
+          footer={<>
+            <button type="button" className="btn-secondary" onClick={() => setClearOpen(false)}
+              disabled={clearDataMutation.isPending}>Cancel</button>
+            <button type="button" className="btn-primary bg-red-600 hover:bg-red-700"
+              disabled={!clearPassword || clearDataMutation.isPending}
+              onClick={() => clearDataMutation.mutate(clearPassword)}>
+              {clearDataMutation.isPending ? 'Clearing…' : 'Clear all data'}
+            </button>
+          </>}
+        >
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            This permanently deletes all readings, quality flags, alerts and import
+            batches for <strong>{station.name}</strong>. The station, its sensors and
+            configuration are kept. Re-upload the correct file afterwards.
+          </div>
+          <label className="label mt-4" htmlFor="aws-clear-password">
+            Confirm with your admin password
+          </label>
+          <input
+            id="aws-clear-password"
+            type="password"
+            className="input"
+            autoComplete="current-password"
+            value={clearPassword}
+            onChange={(event) => setClearPassword(event.target.value)}
+            placeholder="Enter your password"
+          />
+          {clearDataMutation.isError && (
+            <p className="mt-2 text-sm text-red-600">{extractError(clearDataMutation.error)}</p>
+          )}
+        </Modal>
+      )}
     </div>
   )
 }
