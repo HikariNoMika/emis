@@ -22,6 +22,13 @@ export const stationService = {
     return (await api.delete(`/stations/${id}`)).data
   },
 
+  // Destructive: requires the admin password as a safety check.
+  async clearData(id, password) {
+    return extractData(
+      await api.delete(`/stations/${id}/data`, { data: { password } }),
+    )
+  },
+
   async mapData() {
     return extractData(await api.get('/stations/map-data'))
   },

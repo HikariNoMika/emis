@@ -32,6 +32,10 @@ class StationSchema(BaseModel):
         return value
 
 
+class ClearDataSchema(BaseModel):
+    password: str = Field(..., min_length=1)
+
+
 class StationQuerySchema(BaseModel):
     search: Optional[str] = None
     status: Optional[str] = None

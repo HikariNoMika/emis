@@ -2,8 +2,9 @@
 
 from fastapi import APIRouter, Depends, Query
 
+from app.extensions import db
 from app.repositories.station_repository import StationRepository
-from app.schemas import StationQuerySchema, StationSchema
+from app.schemas import ClearDataSchema, StationQuerySchema, StationSchema
 from app.services import station_service
 from app.services.exceptions import NotFoundError
 from app.utils.responses import ok, paginated
@@ -67,6 +68,34 @@ def archive_station(station_id: int, user=Depends(get_current_user)):
         raise NotFoundError("Station not found.")
     station_service.archive_station(station, user.id)
     return ok(message="Station archived. Historical data was preserved.")
+
+
+@stations_bp.delete("/{station_id}/data")
+def clear_station_data(station_id: int, payload: ClearDataSchema, user=Depends(get_current_user)):
+    """Permanently delete all readings and imports for one station.
+
+    The station and its sensors are kept. Requires the administrator's current
+    password as a safety check, since this action cannot be undone.
+    """
+    from app.utils.security import verify_password
+    from app.models import User
+
+    current_user = db.session.get(User, user.id)
+    if current_user is None or not verify_password(current_user.password_hash, payload.password):
+        from app.utils.responses import error
+        return error("Incorrect password. Data was not cleared.", 403)
+
+    station = StationRepository.find_by_id(station_id)
+    if station is None:
+        raise NotFoundError("Station not found.")
+    result = station_service.clear_station_data(station, user.id)
+    return ok(
+        data=result,
+        message=(
+            f"Cleared {result['measurements_deleted']:,} readings and "
+            f"{result['import_batches_deleted']} import(s) for {station.name}."
+        ),
+    )
 
 
 @stations_bp.get("/{station_id}/sensors")

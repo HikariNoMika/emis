@@ -128,10 +128,10 @@ class Database:
                 self.engine = create_engine(
                     settings.DATABASE_URL,
                     poolclass=QueuePool,
-                    pool_size=10,
-                    max_overflow=20,
-                    pool_timeout=30,
-                    connect_args={"check_same_thread": False},
+                    pool_size=30,
+                    max_overflow=40,
+                    pool_timeout=60,
+                    connect_args={"check_same_thread": False, "timeout": 30},
                 )
 
                 @event.listens_for(self.engine, "connect")
@@ -142,6 +142,9 @@ class Database:
                     try:
                         cursor.execute("PRAGMA journal_mode=WAL")
                         cursor.execute("PRAGMA synchronous=NORMAL")
+                        # Wait up to 30s for a write lock instead of failing
+                        # immediately when several requests scan/write at once.
+                        cursor.execute("PRAGMA busy_timeout=30000")
                     finally:
                         cursor.close()
         else:

@@ -39,6 +39,8 @@ export default function StationDetailPage() {
   const [columnHints, setColumnHints] = useState({})
   const [renameOpen, setRenameOpen] = useState(false)
   const [renameValue, setRenameValue] = useState('')
+  const [clearOpen, setClearOpen] = useState(false)
+  const [clearPassword, setClearPassword] = useState('')
   const [importFile, setImportFile] = useState(null)
   const [importSheet, setImportSheet] = useState('')
   const [pendingBatch, setPendingBatch] = useState(null)
@@ -60,6 +62,21 @@ export default function StationDetailPage() {
       invalidate()
       setRenameOpen(false)
       setNotice('Station renamed.')
+    },
+  })
+
+  const clearDataMutation = useMutation({
+    mutationFn: (password) => stationService.clearData(stationId, password),
+    onSuccess: (result) => {
+      setClearOpen(false)
+      setClearPassword('')
+      invalidate()
+      queryClient.invalidateQueries({ queryKey: ['imports'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setNotice(
+        `Cleared ${result?.measurements_deleted?.toLocaleString() ?? 0} readings ` +
+        `and ${result?.import_batches_deleted ?? 0} import(s). The station and its sensors are intact.`,
+      )
     },
   })
 
@@ -231,6 +248,10 @@ export default function StationDetailPage() {
             <button type="button" className="btn-secondary"
               onClick={() => { setRenameValue(station.name); setRenameOpen(true) }}>
               Rename
+            </button>
+            <button type="button" className="btn-secondary border-red-300 text-red-700 hover:bg-red-50"
+              onClick={() => { setClearPassword(''); setClearOpen(true) }}>
+              Clear data
             </button>
             <button type="button" className="btn-primary" onClick={() => { setEditingSensor(null); setSensorFormOpen(true) }}>
               + Add sensor
@@ -435,6 +456,44 @@ export default function StationDetailPage() {
           <p className="mt-2 text-xs text-slate-500">Station code: {station.station_code}</p>
           {renameMutation.isError && (
             <p className="mt-2 text-sm text-red-600">{extractError(renameMutation.error)}</p>
+          )}
+        </Modal>
+      )}
+
+      {clearOpen && (
+        <Modal
+          title={`Clear data for ${station.name}`}
+          description="This cannot be undone."
+          onClose={() => setClearOpen(false)}
+          footer={<>
+            <button type="button" className="btn-secondary" onClick={() => setClearOpen(false)}
+              disabled={clearDataMutation.isPending}>Cancel</button>
+            <button type="button" className="btn-primary bg-red-600 hover:bg-red-700"
+              disabled={!clearPassword || clearDataMutation.isPending}
+              onClick={() => clearDataMutation.mutate(clearPassword)}>
+              {clearDataMutation.isPending ? 'Clearing…' : 'Clear all data'}
+            </button>
+          </>}
+        >
+          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            This permanently deletes all readings, quality flags, alerts and import
+            batches for <strong>{station.name}</strong>. The station, its sensors and
+            configuration are kept. Re-upload the correct file afterwards.
+          </div>
+          <label className="label mt-4" htmlFor="clear-password">
+            Confirm with your admin password
+          </label>
+          <input
+            id="clear-password"
+            type="password"
+            className="input"
+            autoComplete="current-password"
+            value={clearPassword}
+            onChange={(event) => setClearPassword(event.target.value)}
+            placeholder="Enter your password"
+          />
+          {clearDataMutation.isError && (
+            <p className="mt-2 text-sm text-red-600">{extractError(clearDataMutation.error)}</p>
           )}
         </Modal>
       )}

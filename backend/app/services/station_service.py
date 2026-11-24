@@ -86,6 +86,85 @@ def archive_station(station, user_id):
     return station
 
 
+def clear_station_data(station, user_id):
+    """Permanently delete all readings and imports for one station.
+
+    The station itself, its sensors and its configuration are kept. This is a
+    deliberate destructive action for fixing a station that received the wrong
+    file (e.g. a water-level workbook imported into a weather station). It is
+    only reachable through an explicit, confirmed administrator action.
+    """
+    from app.models import (
+        Alert,
+        DataQualityFlag,
+        ImportBatch,
+        MaintenanceRecord,
+        Measurement,
+        RawImportRecord,
+        Report,
+        StationStatus,
+    )
+
+    station_id = station.id
+
+    # Count what will be removed for the confirmation/result message.
+    measurement_count = Measurement.query.filter_by(station_id=station_id).count()
+    batch_ids = [
+        row[0] for row in db.session.query(ImportBatch.id)
+        .filter(ImportBatch.station_id == station_id).all()
+    ]
+
+    # Delete in dependency order so no foreign key is left dangling.
+    # Quality flags can reference a measurement OR an import batch directly.
+    if batch_ids:
+        DataQualityFlag.query.filter(
+            DataQualityFlag.import_batch_id.in_(batch_ids)
+        ).delete(synchronize_session=False)
+    DataQualityFlag.query.filter_by(station_id=station_id).delete(
+        synchronize_session=False
+    )
+    Measurement.query.filter_by(station_id=station_id).delete(
+        synchronize_session=False
+    )
+    if batch_ids:
+        RawImportRecord.query.filter(
+            RawImportRecord.import_batch_id.in_(batch_ids)
+        ).delete(synchronize_session=False)
+        ImportBatch.query.filter(ImportBatch.id.in_(batch_ids)).delete(
+            synchronize_session=False
+        )
+
+    StationStatus.query.filter_by(station_id=station_id).delete(
+        synchronize_session=False
+    )
+    Alert.query.filter_by(station_id=station_id).delete(synchronize_session=False)
+    MaintenanceRecord.query.filter_by(station_id=station_id).delete(
+        synchronize_session=False
+    )
+    Report.query.filter_by(station_id=station_id).delete(synchronize_session=False)
+
+    # Reset health so the station is not shown as OFFLINE from stale snapshots.
+    station.operational_status = "UNKNOWN"
+
+    log_action(
+        "STATION_DATA_CLEARED",
+        "stations",
+        record_identifier=station.station_code,
+        new_values={
+            "measurements_deleted": measurement_count,
+            "import_batches_deleted": len(batch_ids),
+        },
+        user_id=user_id,
+        commit=False,
+    )
+    db.session.commit()
+    return {
+        "station_id": station_id,
+        "measurements_deleted": measurement_count,
+        "import_batches_deleted": len(batch_ids),
+    }
+
+
 def station_detail(station):
     """Assemble the station detail page data from several tables."""
     from app.models import ImportBatch, Measurement, Sensor

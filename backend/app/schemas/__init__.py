@@ -32,7 +32,7 @@ from .measurements import (
 from .quality import QualityFlagQuerySchema, ResolveFlagSchema
 from .reports import ReportGenerateSchema
 from .sensors import SensorMeasurementTypesSchema, SensorQuerySchema, SensorSchema
-from .stations import StationQuerySchema, StationSchema
+from .stations import ClearDataSchema, StationQuerySchema, StationSchema
 from .system import AuditLogFilterSchema, SystemSettingSchema
 from .users import (
     ResetPasswordSchema,
@@ -45,7 +45,7 @@ from .users import (
 __all__ = [
     "ActualCreate", "ActualUpdate", "AlertActionSchema", "AlertQuerySchema", "AuditLogFilterSchema",
     "AttachmentUpload", "CategoryOut", "ChangePasswordSchema",
-    "ComparisonQuerySchema", "DataCompletenessQuery", "ExportQuerySchema",
+    "ClearDataSchema", "ComparisonQuerySchema", "DataCompletenessQuery", "ExportQuerySchema",
     "FillGapsSchema", "FlexibleComparisonQuerySchema", "ImportMappingSchema",
     "ImportQuerySchema", "IndicatorCreate",
     "IndicatorUpdate", "LoginSchema",
