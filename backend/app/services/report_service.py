@@ -132,11 +132,11 @@ def _first_station_id(records):
 
 
 def _gather_station_report(payload, date_from, date_to, progress=None):
-    """Collect everything a station report needs for the given date range.
+    """Collect charts, statistics and recorded extremes for one station.
 
-    Includes all readings, per-parameter statistics, data gaps, quality flags
-    and plain-language explanations. Missing readings are reported as missing,
-    never as zero.
+    Only what the report shows is gathered — no raw readings table, gap table
+    or quality-flag list — so generation stays fast. Missing readings are never
+    counted as zero.
     """
     from app.services import measurement_service as ms
 
@@ -149,13 +149,6 @@ def _gather_station_report(payload, date_from, date_to, progress=None):
         types = [t for t in MeasurementType.query.order_by(MeasurementType.id).all() if t.id in allowed]
     else:
         types = MeasurementType.query.order_by(MeasurementType.id).all()
-
-    records_query = Measurement.query.filter_by(station_id=station.id)
-    if date_from:
-        records_query = records_query.filter(Measurement.observation_time >= date_from)
-    if date_to:
-        records_query = records_query.filter(Measurement.observation_time <= date_to)
-    records = records_query.order_by(Measurement.observation_time.asc()).all()
 
     sections = []
     for index, measurement_type in enumerate(types):
@@ -172,39 +165,38 @@ def _gather_station_report(payload, date_from, date_to, progress=None):
             date_from,
             date_to,
         )
-        # Gaps only make sense for a type that actually has readings.
-        gaps = ms.data_gaps(station.id, measurement_type.id, date_from, date_to, limit=50)
+        # Exact recorded low/high with timestamps, drawn from the readings.
+        query = Measurement.query.filter_by(
+            station_id=station.id, measurement_type_id=measurement_type.id
+        )
+        if date_from:
+            query = query.filter(Measurement.observation_time >= date_from)
+        if date_to:
+            query = query.filter(Measurement.observation_time <= date_to)
+        low = query.order_by(Measurement.normalized_value.asc()).first()
+        high = query.order_by(Measurement.normalized_value.desc()).first()
         sections.append({
             "type": measurement_type,
             "statistics": stats,
             "points": series[0]["points"] if series else [],
-            "gaps": gaps,
+            "low": (float(low.normalized_value), to_iso(low.observation_time))
+                   if low and low.normalized_value is not None else None,
+            "high": (float(high.normalized_value), to_iso(high.observation_time))
+                    if high and high.normalized_value is not None else None,
         })
 
-    quality_query = DataQualityFlag.query.filter_by(station_id=station.id)
-    if date_from:
-        quality_query = quality_query.filter(DataQualityFlag.observation_time >= date_from)
-    if date_to:
-        quality_query = quality_query.filter(DataQualityFlag.observation_time <= date_to)
-    quality_notes = quality_query.order_by(DataQualityFlag.created_at.desc()).limit(50).all()
-
-    return {
-        "station": station,
-        "sections": sections,
-        "records": records,
-        "quality_notes": quality_notes,
-    }
+    return {"station": station, "sections": sections}
 
 
 def _build_station_pdf(path, title, date_from, date_to, data):
-    """Station-focused PDF with all trends, statistics, readings, gaps and explanations."""
+    """Station PDF: charts, how-to-read, explanations, summary and extremes."""
     from reportlab.graphics.charts.lineplots import LinePlot
     from reportlab.graphics.shapes import Drawing
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.platypus import (
-        KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+        KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
     )
 
     styles = getSampleStyleSheet()
@@ -226,10 +218,9 @@ def _build_station_pdf(path, title, date_from, date_to, data):
     story.append(Paragraph("How to read this report", styles["Heading2"]))
     for line in [
         "Values are the original readings preserved from the source files; nothing is invented or overwritten.",
-        "Missing readings are shown as missing (or as gaps) and are never counted as zero.",
-        "Min / Max / Average / Median / Std dev describe only the readings stored in the selected period.",
-        "Gaps list stretches where no reading exists at the station's expected interval.",
-        "Quality notes explain why certain readings were flagged for investigation.",
+        "Missing readings are never counted as zero and are left blank on the charts.",
+        "Min / Max / Average / Median / Std dev describe only readings stored in the selected period.",
+        "Recorded low / high shows the exact value and its timestamp in the selected period.",
     ]:
         story.append(Paragraph(f"• {line}", styles["Normal"]))
     story.append(Spacer(1, 10))
@@ -295,75 +286,29 @@ def _build_station_pdf(path, title, date_from, date_to, data):
     story.append(t)
     story.append(Spacer(1, 12))
 
-    story.append(Paragraph("Data gaps", styles["Heading2"]))
-    any_gap = False
-    gap_rows = [["Parameter", "From", "To", "Missing readings", "Jump (min)"]]
+    story.append(Paragraph("Recorded highs and lows", styles["Heading2"]))
+    extreme_rows = [["Parameter", "Lowest value", "At (UTC)", "Highest value", "At (UTC)"]]
     for section in data["sections"]:
-        gaps = (section["gaps"] or {}).get("gaps") or []
-        for gap in gaps:
-            any_gap = True
-            gap_rows.append([
-                section["type"].name,
-                str(gap.get("start", ""))[:19], str(gap.get("end", ""))[:19],
-                str(gap.get("missing_readings", "")), str(gap.get("gap_minutes", "")),
-            ])
-    if any_gap:
-        gt = Table(gap_rows, repeatRows=1)
-        gt.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174a7c")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTSIZE", (0, 0), (-1, -1), 6.5),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ]))
-        story.append(gt)
-    else:
-        story.append(Paragraph("No data gaps detected in the selected period.", styles["Normal"]))
-    story.append(Spacer(1, 12))
-
-    story.append(PageBreak())
-    story.append(Paragraph("All measurements in period", styles["Heading2"]))
-    story.append(Paragraph(
-        f"{len(data['records']):,} readings. Columns show the stored value and its quality status.",
-        styles["Normal"],
-    ))
-    header = ["Observed at (UTC)", "Parameter", "Value", "Unit", "Quality"]
-    detail = [header]
-    for record in data["records"]:
-        mtype = MeasurementRepository.get_type(record.measurement_type_id)
-        value = record.normalized_value if record.normalized_value is not None else record.original_value
-        detail.append([
-            to_iso(record.observation_time),
-            mtype.name if mtype else str(record.measurement_type_id),
-            "" if value is None else str(value),
-            record.unit or "",
-            record.quality_status,
+        low, high = section.get("low"), section.get("high")
+        extreme_rows.append([
+            section["type"].name,
+            str(low[0]) if low else "—", str(low[1])[:19] if low else "—",
+            str(high[0]) if high else "—", str(high[1])[:19] if high else "—",
         ])
-    dt = Table(detail, repeatRows=1)
-    dt.setStyle(TableStyle([
+    et = Table(extreme_rows, repeatRows=1)
+    et.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#174a7c")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE", (0, 0), (-1, -1), 5.5),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f7fa")]),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
     ]))
-    story.append(dt)
-    story.append(Spacer(1, 12))
-
-    story.append(Paragraph("Quality notes", styles["Heading2"]))
-    if data["quality_notes"]:
-        for note in data["quality_notes"]:
-            story.append(Paragraph(
-                f"• {note.rule_code}: {note.explanation or 'See flag details.'}",
-                styles["Normal"],
-            ))
-    else:
-        story.append(Paragraph("No quality flags in this period.", styles["Normal"]))
+    story.append(et)
 
     doc.build(story)
 
 
 def _build_station_xlsx(path, title, date_from, date_to, data):
-    """Station-focused Excel with info, summary, gaps and all readings."""
+    """Station Excel: info, statistical summary and recorded extremes."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
@@ -391,32 +336,15 @@ def _build_station_xlsx(path, title, date_from, date_to, data):
             s.get("observations"), s.get("missing_records"),
         ])
 
-    gaps = wb.create_sheet("Data gaps")
-    gaps.append(["Parameter", "From", "To", "Missing readings", "Jump (min)"])
+    extremes = wb.create_sheet("Highs and lows")
+    extremes.append(["Parameter", "Lowest value", "At (UTC)", "Highest value", "At (UTC)"])
     for section in data["sections"]:
-        for gap in (section["gaps"] or {}).get("gaps") or []:
-            gaps.append([
-                section["type"].name, gap.get("start"), gap.get("end"),
-                gap.get("missing_readings"), gap.get("gap_minutes"),
-            ])
-
-    detail = wb.create_sheet("Measurements")
-    detail.append(["Observation time (UTC)", "Parameter", "Value", "Unit", "Quality"])
-    for record in data["records"]:
-        mtype = MeasurementRepository.get_type(record.measurement_type_id)
-        value = record.normalized_value if record.normalized_value is not None else record.original_value
-        detail.append([
-            to_iso(record.observation_time),
-            mtype.name if mtype else str(record.measurement_type_id),
-            float(value) if value is not None else None,
-            record.unit,
-            record.quality_status,
+        low, high = section.get("low"), section.get("high")
+        extremes.append([
+            section["type"].name,
+            low[0] if low else None, low[1] if low else None,
+            high[0] if high else None, high[1] if high else None,
         ])
-
-    quality = wb.create_sheet("Quality notes")
-    quality.append(["Rule", "Status", "Severity", "Explanation"])
-    for note in data["quality_notes"]:
-        quality.append([note.rule_code, note.quality_status, note.severity, note.explanation])
     wb.save(path)
 
 

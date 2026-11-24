@@ -6,6 +6,7 @@ export const importService = {
     return extractData(
       await api.post('/imports/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 180000,
       }),
     )
   },
@@ -27,7 +28,7 @@ export const importService = {
   },
 
   async process(id) {
-    return extractData(await api.post(`/imports/${id}/process`))
+    return extractData(await api.post(`/imports/${id}/process`, {}, { timeout: 180000 }))
   },
 
   async reset(id) {

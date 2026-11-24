@@ -6,7 +6,7 @@ export const reportService = {
   },
 
   async generate(payload) {
-    return extractData(await api.post('/reports/generate', payload))
+    return extractData(await api.post('/reports/generate', payload, { timeout: 180000 }))
   },
 
   async progress(jobId) {

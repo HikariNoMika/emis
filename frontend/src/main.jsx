@@ -6,16 +6,16 @@ import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import './index.css'
 
-// React Query defaults: data stays fresh for 30 seconds, failed requests retry
-// twice. Pages can override these when a resource needs different behaviour.
+// React Query defaults: data stays fresh for 30 seconds. Failures do not retry
+// so the UI shows an error immediately instead of waiting through backoff.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
-      retry: 1,
-      retryDelay: 500,
+      retry: 0,
       refetchOnWindowFocus: false,
     },
+    mutations: { retry: 0 },
   },
 })
 

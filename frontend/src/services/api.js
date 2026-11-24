@@ -31,8 +31,9 @@ export function clearTokens() {
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  // Uploads and import processing can take longer than 30s on a remote server.
-  timeout: 180000,
+  // Short default so ordinary page data fails fast. Long operations (uploads,
+  // report generation) opt into a larger timeout explicitly in their service.
+  timeout: 20000,
 })
 
 // Attach the access token to every outgoing request.

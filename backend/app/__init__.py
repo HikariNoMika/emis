@@ -5,6 +5,7 @@ The modular-monolith structure is preserved: routers -> services -> repositories
 -> models. No Flask code remains.
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -34,6 +35,27 @@ def create_app(environment=None):
             db.create_all()
         # Bring older databases up to date (adds station_type if missing).
         db.ensure_columns()
+        # Recover imports that were interrupted by a previous restart.
+        # Queued/PROCESSING batches can never resume on their own after a crash;
+        # returning them to PREVIEWED lets the administrator retry safely.
+        # Duplicate detection means a retry never overwrites stored readings.
+        try:
+            from app.models import ImportBatch
+
+            interrupted = ImportBatch.query.filter(
+                ImportBatch.status.in_(["QUEUED", "PROCESSING"])
+            ).all()
+            for batch in interrupted:
+                batch.status = "PREVIEWED"
+                batch.started_at = None
+            if interrupted:
+                db.session.commit()
+                logging.getLogger(__name__).warning(
+                    "Reset %d interrupted import(s) to PREVIEWED", len(interrupted)
+                )
+        except Exception as exc:
+            db.session.rollback()
+            logging.getLogger(__name__).warning("Could not reset imports: %s", exc)
         # Ensure the measurement catalogue and example categories exist.
         try:
             from app.services.accomplishment_service import seed_defaults
@@ -42,8 +64,6 @@ def create_app(environment=None):
             ensure_core_data()
             seed_defaults()
         except Exception as exc:  # tables may not exist yet before migrations
-            import logging
-
             logging.getLogger(__name__).warning("Accomplishment defaults skipped: %s", exc)
             db.session.rollback()
         yield
