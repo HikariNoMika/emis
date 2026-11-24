@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle } from 'lucide-react'
 import TrendChart from '../components/charts/TrendChart'
+import StationForm from '../components/forms/StationForm'
 import DataTable from '../components/ui/DataTable'
 import EmptyState from '../components/ui/EmptyState'
 import ErrorState from '../components/ui/ErrorState'
@@ -67,6 +68,10 @@ export default function AwsStationPage({
   const [clearOpen, setClearOpen] = useState(false)
   const [clearPassword, setClearPassword] = useState('')
   const [clearNotice, setClearNotice] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [uploadFile, setUploadFile] = useState(null)
+  const [uploadNotice, setUploadNotice] = useState('')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const queryClient = useQueryClient()
@@ -95,6 +100,40 @@ export default function AwsStationPage({
       setClearNotice(
         `Cleared ${result?.measurements_deleted?.toLocaleString() ?? 0} readings ` +
         `and ${result?.import_batches_deleted ?? 0} import(s). Re-upload the correct file.`,
+      )
+    },
+  })
+
+  const editMutation = useMutation({
+    mutationFn: (payload) => stationService.update(stationId, payload),
+    onSuccess: (updated) => {
+      setEditOpen(false)
+      queryClient.invalidateQueries({ queryKey: ['stations', stationId] })
+      queryClient.invalidateQueries({ queryKey: ['stations'] })
+      setClearNotice(`Station saved as ${updated.name} (${updated.station_code}).`)
+    },
+  })
+
+  const uploadMutation = useMutation({
+    mutationFn: async (file) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      // Lock this import to the station shown on this page.
+      formData.append('station_id', stationId)
+      const batch = await importService.upload(formData)
+      const result = await importService.process(batch.id)
+      return { batch, result }
+    },
+    onSuccess: ({ result }) => {
+      setUploadOpen(false)
+      setUploadFile(null)
+      queryClient.invalidateQueries({ queryKey: ['measurements'] })
+      queryClient.invalidateQueries({ queryKey: ['imports'] })
+      queryClient.invalidateQueries({ queryKey: ['stations', stationId] })
+      const summary = result?.summary || {}
+      setUploadNotice(
+        `Import complete: ${summary.imported_rows ?? 0} new readings, ` +
+        `${summary.duplicate_rows ?? 0} duplicates skipped.`,
       )
     },
   })
@@ -270,6 +309,12 @@ export default function AwsStationPage({
         description={description}
         actions={
           <>
+            <button type="button" className="btn-secondary" onClick={() => setEditOpen(true)}>
+              Edit station
+            </button>
+            <button type="button" className="btn-secondary" onClick={() => { setUploadNotice(''); setUploadOpen(true) }}>
+              Upload data
+            </button>
             <button
               type="button"
               className="btn-secondary border-red-300 text-red-700 hover:bg-red-50"
@@ -295,6 +340,11 @@ export default function AwsStationPage({
       {clearNotice && (
         <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
           {clearNotice}
+        </p>
+      )}
+      {uploadNotice && (
+        <p className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+          {uploadNotice}
         </p>
       )}
 
@@ -673,6 +723,58 @@ export default function AwsStationPage({
           />
           {clearDataMutation.isError && (
             <p className="mt-2 text-sm text-red-600">{extractError(clearDataMutation.error)}</p>
+          )}
+        </Modal>
+      )}
+
+      {editOpen && (
+        <Modal
+          title="Edit station"
+          description="Change the station code, name or settings."
+          onClose={() => setEditOpen(false)}
+        >
+          <StationForm
+            station={station}
+            isWorking={editMutation.isPending}
+            submitLabel="Save station"
+            onCancel={() => setEditOpen(false)}
+            onSubmit={(payload) => editMutation.mutate(payload)}
+          />
+          {editMutation.isError && (
+            <p className="mt-2 text-sm text-red-600">{extractError(editMutation.error)}</p>
+          )}
+        </Modal>
+      )}
+
+      {uploadOpen && (
+        <Modal
+          title={`Upload data for ${station.name}`}
+          description="The file is locked to this station."
+          onClose={() => setUploadOpen(false)}
+          footer={<>
+            <button type="button" className="btn-secondary" onClick={() => setUploadOpen(false)}
+              disabled={uploadMutation.isPending}>Cancel</button>
+            <button type="button" className="btn-primary"
+              disabled={!uploadFile || uploadMutation.isPending}
+              onClick={() => uploadMutation.mutate(uploadFile)}>
+              {uploadMutation.isPending ? 'Uploading & importing…' : 'Upload & import'}
+            </button>
+          </>}
+        >
+          <label className="label" htmlFor="aws-upload-file">Excel or CSV file</label>
+          <input
+            id="aws-upload-file"
+            type="file"
+            accept=".xlsx,.xlsm,.csv"
+            className="input"
+            onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            Station: <strong>{station.name}</strong> ({station.station_code}).
+            Existing readings are never overwritten; duplicates are skipped.
+          </p>
+          {uploadMutation.isError && (
+            <p className="mt-2 text-sm text-red-600">{extractError(uploadMutation.error)}</p>
           )}
         </Modal>
       )}
