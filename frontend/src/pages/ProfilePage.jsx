@@ -5,6 +5,23 @@ import { extractError } from '../services/api'
 import authService from '../services/authService'
 import userService from '../services/userService'
 
+// Mirrors backend validate_password_policy so users see a clear message before
+// the request is sent instead of a generic "Validation failed." error.
+function passwordPolicyError(value) {
+  if (value.length < 12) return 'Password must be at least 12 characters.'
+  if (!/[A-Z]/.test(value)) return 'Password must contain an uppercase letter.'
+  if (!/[a-z]/.test(value)) return 'Password must contain a lowercase letter.'
+  if (!/[0-9]/.test(value)) return 'Password must contain a digit.'
+  if (!/[^A-Za-z0-9]/.test(value)) return 'Password must contain a special character.'
+  return ''
+}
+
+function apiError(err) {
+  const errors = err?.response?.data?.errors
+  if (errors) return Object.values(errors).flat().join(' ')
+  return extractError(err)
+}
+
 export default function ProfilePage() {
   const { user, refreshProfile } = useAuth()
   const [profile, setProfile] = useState({
@@ -36,6 +53,15 @@ export default function ProfilePage() {
   const savePassword = async (event) => {
     event.preventDefault()
     setError('')
+    const problem = passwordPolicyError(passwords.new_password)
+    if (problem) {
+      setError(problem)
+      return
+    }
+    if (passwords.new_password !== passwords.confirm_password) {
+      setError('New password and confirmation do not match.')
+      return
+    }
     try {
       const result = await authService.changePassword(
         passwords.current_password,
@@ -52,7 +78,7 @@ export default function ProfilePage() {
         setNotice('Password changed.')
       }
     } catch (err) {
-      setError(extractError(err))
+      setError(apiError(err))
     }
   }
 
@@ -134,6 +160,9 @@ export default function ProfilePage() {
           <label className="label">New password</label>
           <input className="input" type="password" value={passwords.new_password}
             onChange={(e) => setPasswords({ ...passwords, new_password: e.target.value })} />
+          <p className="mt-1 text-xs text-slate-500">
+            At least 12 characters, with uppercase, lowercase, a number and a symbol.
+          </p>
         </div>
         <div>
           <label className="label">Confirm new password</label>
