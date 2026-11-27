@@ -11,22 +11,49 @@ import { useStations } from '../hooks/useStations'
 import { extractError } from '../services/api'
 import reportService from '../services/reportService'
 
-const REPORT_TYPES = [
-  ['daily', 'Daily environmental report'],
-  ['weekly', 'Weekly environmental report'],
-  ['monthly', 'Monthly environmental report'],
-  ['station_performance', 'Station performance report'],
-  ['sensor_health', 'Sensor health report'],
-  ['data_quality', 'Data quality report'],
-  ['rainfall', 'Rainfall report'],
-  ['environmental_trends', 'Environmental trend report'],
-  ['multi_station_comparison', 'Multi-station comparison report'],
-  ['import_summary', 'Data import summary'],
-  ['maintenance_calibration', 'Maintenance and calibration report'],
-  ['station_full', 'Station comprehensive report (trends + gaps)'],
-  ['station_comparison', '3-station comparison (trends + table + lows/highs)'],
-  ['quarterly_analysis', 'Quarterly Data Analysis Report (Word)'],
+// Report types grouped the same way as the quarterly watershed analysis report.
+const REPORT_GROUPS = [
+  {
+    label: 'Quarterly data analysis (Word)',
+    items: [
+      ['quarterly_analysis', 'Full report — memo, tables, trend figures, correlations'],
+    ],
+  },
+  {
+    label: 'Automated Weather Stations — parameters',
+    items: [
+      ['rainfall', 'Rainfall report'],
+      ['environmental_trends', 'Environmental trend report'],
+      ['station_performance', 'Station performance report'],
+      ['sensor_health', 'Sensor health report'],
+      ['daily', 'Daily environmental report'],
+      ['weekly', 'Weekly environmental report'],
+      ['monthly', 'Monthly environmental report'],
+      ['multi_station_comparison', 'Multi-station comparison report'],
+      ['station_comparison', '3-station comparison (trends + highs/lows)'],
+    ],
+  },
+  {
+    label: 'Automated Water Level Station — water level',
+    items: [
+      ['station_full', 'Station comprehensive report (select NAMNAMA)'],
+      ['data_quality', 'Data quality report'],
+    ],
+  },
+  {
+    label: 'Data management & maintenance',
+    items: [
+      ['import_summary', 'Data import summary'],
+      ['maintenance_calibration', 'Maintenance and calibration report'],
+    ],
+  },
 ]
+
+const REPORT_NOTES = {
+  quarterly_analysis: 'Generates the full DENR-style memorandum with tables and figures. Choose the year and quarter below.',
+  station_full: 'For the AWLS section, select NAMNAMA as the station.',
+  station_comparison: 'Compares up to three AWS stations for one parameter.',
+}
 
 export default function ReportsPage() {
   const queryClient = useQueryClient()
@@ -101,8 +128,17 @@ export default function ReportsPage() {
             <div>
               <label className="label">Report type</label>
               <select className="input" value={reportType} onChange={(event) => setReportType(event.target.value)}>
-                {REPORT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                {REPORT_GROUPS.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.items.map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
+              {REPORT_NOTES[reportType] && (
+                <p className="mt-1 text-xs text-slate-500">{REPORT_NOTES[reportType]}</p>
+              )}
             </div>
             {reportType === 'quarterly_analysis' ? (
               <>

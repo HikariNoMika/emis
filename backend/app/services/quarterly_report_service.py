@@ -11,9 +11,13 @@ from datetime import datetime, timezone
 from io import BytesIO
 from statistics import StatisticsError, correlation, fmean
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.shared import Pt
+from docx.shared import Inches, Pt
 
 from app.extensions import db
 from app.models import Measurement, MeasurementType, Station
@@ -83,6 +87,58 @@ def _table(doc, headers, rows, widths=None):
     return table
 
 
+def _image(fig):
+    buffer = BytesIO()
+    fig.savefig(buffer, format="png", dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    buffer.seek(0)
+    return buffer
+
+
+def _trend_figure(series_by_station, title, ylabel):
+    """Daily-average line chart, one line per station."""
+    if not any(series_by_station.values()):
+        return None
+    fig, ax = plt.subplots(figsize=(9, 3.2))
+    for name, values in series_by_station.items():
+        if not values:
+            continue
+        days = sorted(values)
+        ax.plot(days, [values[day] for day in days], label=name, linewidth=1.1)
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.grid(alpha=0.3)
+    ax.legend(fontsize=8, loc="best")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    return _image(fig)
+
+
+def _bar_figure(labels, values, title, ylabel):
+    if not values or sum(values) == 0:
+        return None
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.bar(labels, values, color="#4472C4")
+    ax.set_title(title)
+    ax.set_ylabel(ylabel)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    return _image(fig)
+
+
+def _scatter_figure(xs, ys, title, xlabel, ylabel):
+    if len(xs) < 3:
+        return None
+    fig, ax = plt.subplots(figsize=(6, 3.5))
+    ax.scatter(xs, ys, s=12, alpha=0.55, color="#2F5597")
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    return _image(fig)
+
+
 def build_docx(year, quarter, title=None):
     """Return the report as .docx bytes for the given year and quarter."""
     start, end = quarter_bounds(year, quarter)
@@ -128,6 +184,7 @@ def build_docx(year, quarter, title=None):
 
     # ---- Observations grouped by type, station and time -------------------
     series = defaultdict(lambda: defaultdict(list))
+    per_station = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     wind = defaultdict(lambda: defaultdict(int))
     for type_id, station_id, value, observed in db.session.query(
         Measurement.measurement_type_id,
@@ -140,6 +197,7 @@ def build_docx(year, quarter, title=None):
         Measurement.normalized_value.isnot(None),
     ).all():
         series[type_id][observed].append(float(value))
+        per_station[type_id][station_id][observed].append(float(value))
         if types.get("wind_direction") and type_id == types["wind_direction"].id:
             degrees = float(value) % 360
             for name, low, high in WIND_BINS:
@@ -170,8 +228,35 @@ def build_docx(year, quarter, title=None):
         except StatisticsError:
             return None
 
+    def trend_series(code):
+        item = types.get(code)
+        if not item:
+            return {}
+        result = {}
+        for station in stations:
+            readings = per_station.get(item.id, {}).get(station.id, {})
+            if not readings:
+                continue
+            grouped = defaultdict(list)
+            for moment, values in readings.items():
+                grouped[moment.date()].extend(values)
+            result[station.name] = {
+                datetime.combine(day, datetime.min.time()): fmean(values)
+                for day, values in sorted(grouped.items())
+            }
+        return result
+
+    def paired(code_a, code_b):
+        a, b = types.get(code_a), types.get(code_b)
+        if not a or not b:
+            return [], []
+        shared = sorted(set(daily.get(a.id, {})) & set(daily.get(b.id, {})))
+        return ([daily[a.id][key] for key in shared],
+                [daily[b.id][key] for key in shared])
+
     # ---- Compose the document ---------------------------------------------
     doc = Document()
+    figure_no = 0
     style = doc.styles["Normal"]
     style.font.name = "Times New Roman"
     style.font.size = Pt(11)
@@ -243,6 +328,17 @@ def build_docx(year, quarter, title=None):
                          _when(record.observation_time)])
         _table(doc, ["Category", "Value", "Station", "Observed at (UTC)"], rows)
 
+        chart = _trend_figure(
+            trend_series(code), f"{item.name} trend", item.unit
+        )
+        if chart:
+            figure_no += 1
+            doc.add_picture(chart, width=Inches(6.4))
+            caption = doc.add_paragraph(
+                f"Figure {figure_no}. {item.name} ({item.unit}) by station, daily average."
+            )
+            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
     _heading(doc, "Table 3. Wind direction distribution", 2)
     direction_rows = []
     station_totals = [sum(wind.get(s.id, {}).values()) for s in stations]
@@ -263,6 +359,20 @@ def build_docx(year, quarter, title=None):
         _table(doc, ["Direction"] + [s.name for s in stations] + ["Readings"],
                direction_rows)
 
+        direction_chart = _bar_figure(
+            [name for name, _, _ in WIND_BINS],
+            [sum(wind.get(s.id, {}).get(name, 0) for s in stations)
+             for name, _, _ in WIND_BINS],
+            "Wind direction distribution", "Readings",
+        )
+        if direction_chart:
+            figure_no += 1
+            doc.add_picture(direction_chart, width=Inches(6.0))
+            caption = doc.add_paragraph(
+                f"Figure {figure_no}. Wind direction distribution across all stations."
+            )
+            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
     _heading(doc, "Automated Water Level Station", 2)
     level = types.get("water_level")
     if level and level.id in stats:
@@ -272,6 +382,16 @@ def build_docx(year, quarter, title=None):
             f"{_fmt(row[4])} m and a minimum of {_fmt(row[5])} m across "
             f"{row[1]:,} readings."
         )
+        level_chart = _trend_figure(
+            trend_series("water_level"), "Water level", "m"
+        )
+        if level_chart:
+            figure_no += 1
+            doc.add_picture(level_chart, width=Inches(6.4))
+            caption = doc.add_paragraph(
+                f"Figure {figure_no}. Water level (m) at the AWLS, daily average."
+            )
+            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
     else:
         doc.add_paragraph("No water-level readings were stored for this period.")
 
@@ -287,6 +407,18 @@ def build_docx(year, quarter, title=None):
                 if value is not None
                 else "Insufficient aligned observations to compute a correlation.")
         doc.add_paragraph(f"{label}: {text}")
+
+        xs, ys = paired(a, b)
+        scatter = _scatter_figure(
+            xs, ys, label, types[a].name if a else a, types[b].name if b else b
+        )
+        if scatter:
+            figure_no += 1
+            doc.add_picture(scatter, width=Inches(4.8))
+            caption = doc.add_paragraph(
+                f"Figure {figure_no}. {label} (daily averages)."
+            )
+            caption.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     _heading(doc, "SUMMARY", 2)
     doc.add_paragraph(
