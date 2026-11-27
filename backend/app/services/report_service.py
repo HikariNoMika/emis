@@ -40,6 +40,7 @@ REPORT_TITLES = {
     "maintenance_calibration": "Maintenance and Calibration Report",
     "station_full": "Station Comprehensive Report",
     "station_comparison": "Multi-Station Comparison Report",
+    "quarterly_analysis": "Quarterly Watershed Data Analysis Report",
 }
 
 
@@ -868,6 +869,17 @@ def _generate(payload, user_id, job_id, report_progress):
             report_progress.finish(job_id, message=f"Report {report.report_number} ready.")
         return report
 
+    year = quarter = None
+    if payload.get("report_type") == "quarterly_analysis":
+        from app.services.quarterly_report_service import quarter_bounds
+        year = int(payload.get("reporting_year") or utcnow().year)
+        quarter = int(payload.get("quarter") or 1)
+        start, end = quarter_bounds(year, quarter)
+        payload = dict(payload)
+        payload["date_from"] = start.isoformat()
+        payload["date_to"] = (end - timedelta(microseconds=1)).isoformat()
+        payload["file_format"] = "docx"
+
     date_from, date_to = _resolve_period(payload, None, None)
     # Re-resolve using parsed dates when the caller supplied them as strings.
     if payload.get("date_from"):
@@ -884,6 +896,10 @@ def _generate(payload, user_id, job_id, report_progress):
         date_to = date_to.replace(tzinfo=timezone.utc)
 
     title = payload.get("title") or REPORT_TITLES[payload["report_type"]]
+    if payload["report_type"] == "quarterly_analysis":
+        title = payload.get("title") or (
+            f"Q{quarter} {year} Watershed Data Analysis Report"
+        )
 
     # Estimate the work so the progress bar can advance per parameter.
     if job_id:
@@ -932,6 +948,10 @@ def _generate(payload, user_id, job_id, report_progress):
             _build_comparison_pdf(file_path, title, date_from, date_to, data)
         else:
             _build_comparison_xlsx(file_path, title, date_from, date_to, data)
+    elif payload["report_type"] == "quarterly_analysis":
+        from app.services import quarterly_report_service
+        with open(file_path, "wb") as handle:
+            handle.write(quarterly_report_service.build_docx(year, quarter, title))
     elif extension == "pdf":
         _build_pdf(file_path, title, payload, date_from, date_to, data)
     else:

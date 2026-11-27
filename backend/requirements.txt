@@ -29,6 +29,7 @@ qrcode==8.2
 
 # Reporting
 reportlab==4.1.0
+python-docx==1.1.2
 
 # Production server and tests
 gunicorn==21.2.0

@@ -57,9 +57,13 @@ def download_report(report_id: int, user=Depends(get_current_user)):
         from app.services.exceptions import NotFoundError
         raise NotFoundError("Report file is missing.")
 
-    media_type = (
-        "application/pdf" if report.file_format == "pdf"
-        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    media_types = {
+        "pdf": "application/pdf",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }
+    media_type = media_types.get(
+        report.file_format, "application/octet-stream"
     )
     return Response(
         content, media_type=media_type,

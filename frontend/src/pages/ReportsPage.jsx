@@ -25,6 +25,7 @@ const REPORT_TYPES = [
   ['maintenance_calibration', 'Maintenance and calibration report'],
   ['station_full', 'Station comprehensive report (trends + gaps)'],
   ['station_comparison', '3-station comparison (trends + table + lows/highs)'],
+  ['quarterly_analysis', 'Quarterly Data Analysis Report (Word)'],
 ]
 
 export default function ReportsPage() {
@@ -35,6 +36,8 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [format, setFormat] = useState('pdf')
+  const [reportingYear, setReportingYear] = useState(new Date().getFullYear())
+  const [quarter, setQuarter] = useState(1)
   const [selectedTypes, setSelectedTypes] = useState([])
   const [selectedStations, setSelectedStations] = useState([])
   const [notice, setNotice] = useState('')
@@ -59,9 +62,11 @@ export default function ReportsPage() {
       station_id: stationId ? Number(stationId) : null,
       date_from: dateFrom || null,
       date_to: dateTo || null,
-      file_format: format,
+      file_format: reportType === 'quarterly_analysis' ? 'docx' : format,
       measurement_type_ids: selectedTypes.map(Number),
       station_ids: selectedStations.map(Number),
+      reporting_year: Number(reportingYear),
+      quarter: Number(quarter),
     })
   }
 
@@ -85,7 +90,7 @@ export default function ReportsPage() {
 
   return (
     <div>
-      <PageHeader title="Reports" description="Generate PDF and Excel reports from stored monitoring data." />
+      <PageHeader title="Reports" description="Generate PDF, Excel and Word reports from stored monitoring data." />
 
       {notice && <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">{notice}</div>}
 
@@ -99,36 +104,60 @@ export default function ReportsPage() {
                 {REPORT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
             </div>
-            {reportType !== 'station_comparison' && (
-              <div>
-                <label className="label">Station</label>
-                <select className="input" value={stationId} onChange={(event) => setStationId(event.target.value)}>
-                  <option value="">All stations</option>
-                  {(stationsQuery.data?.data || []).map((station) => (
-                    <option key={station.id} value={station.id}>
-                      {station.name} ({station.station_code})
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {reportType === 'quarterly_analysis' ? (
+              <>
+                <div>
+                  <label className="label">Reporting year</label>
+                  <select className="input" value={reportingYear} onChange={(event) => setReportingYear(Number(event.target.value))}>
+                    {[2026, 2025, 2024, 2023].map((year) => <option key={year} value={year}>{year}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Quarter</label>
+                  <select className="input" value={quarter} onChange={(event) => setQuarter(Number(event.target.value))}>
+                    {[1, 2, 3, 4].map((value) => <option key={value} value={value}>Q{value}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Format</label>
+                  <input className="input bg-slate-50" value="Word (.docx)" disabled readOnly />
+                </div>
+              </>
+            ) : (
+              <>
+                {reportType !== 'station_comparison' && (
+                  <div>
+                    <label className="label">Station</label>
+                    <select className="input" value={stationId} onChange={(event) => setStationId(event.target.value)}>
+                      <option value="">All stations</option>
+                      {(stationsQuery.data?.data || []).map((station) => (
+                        <option key={station.id} value={station.id}>
+                          {station.name} ({station.station_code})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className="label">Format</label>
+                  <select className="input" value={format} onChange={(event) => setFormat(event.target.value)}>
+                    <option value="pdf">PDF</option>
+                    <option value="xlsx">Excel (.xlsx)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Date from</label>
+                  <input className="input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+                </div>
+                <div>
+                  <label className="label">Date to</label>
+                  <input className="input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+                </div>
+              </>
             )}
-            <div>
-              <label className="label">Format</label>
-              <select className="input" value={format} onChange={(event) => setFormat(event.target.value)}>
-                <option value="pdf">PDF</option>
-                <option value="xlsx">Excel (.xlsx)</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Date from</label>
-              <input className="input" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            </div>
-            <div>
-              <label className="label">Date to</label>
-              <input className="input" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-            </div>
           </div>
 
+          {reportType !== 'quarterly_analysis' && (
           <div>
             <p className="label">Measurement types (leave empty for all)</p>
             <div className="flex flex-wrap gap-2">
@@ -145,6 +174,7 @@ export default function ReportsPage() {
               ))}
             </div>
           </div>
+          )}
 
           {reportType === 'station_comparison' && (
             <div>

@@ -8,7 +8,7 @@ REPORT_TYPES = (
     "daily", "weekly", "monthly", "station_performance", "sensor_health",
     "data_quality", "rainfall", "environmental_trends",
     "multi_station_comparison", "import_summary", "maintenance_calibration",
-    "station_full", "station_comparison",
+    "station_full", "station_comparison", "quarterly_analysis",
     "accomplishment_quarterly", "accomplishment_annual",
     "accomplishment_activities", "accomplishment_deliverables",
     "accomplishment_data_completeness",
@@ -38,6 +38,6 @@ class ReportGenerateSchema(BaseModel):
     @field_validator("file_format")
     @classmethod
     def check_format(cls, value):
-        if value not in ("pdf", "xlsx"):
-            raise ValueError("Format must be pdf or xlsx.")
+        if value not in ("pdf", "xlsx", "docx"):
+            raise ValueError("Format must be pdf, xlsx or docx.")
         return value
